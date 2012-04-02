@@ -1,0 +1,18 @@
+
+builder   = require './builder'
+
+target = builder.Target
+
+all = target 'All', ['app.js.min']
+
+target 'app.js.min', ['app.js'], ->
+	console.log('We are the DEEEEEEEEEEEE')
+	@minify()
+
+
+
+task 'build', 'Build Project', ->
+	all.build()
+	
+	
+
