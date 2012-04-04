@@ -6,11 +6,18 @@ cmd_minify = (sources, output) ->
 	"yui-compressor  -o #{output}  #{sources}"
 
 fs	 = require 'fs'
+path = require 'path'
 {exec} = require 'child_process'
 util   = require 'util'
 #mini = 'yui-compressor -o'
 
 tsort   = (require './tsort').tsort
+
+uuid4 = (a, b) ->
+  b = a = ""
+  while a++ < 36
+    b += (if a * 51 & 52 then (if a ^ 15 then 8 ^ Math.random() * (if a ^ 20 then 16 else 4) else 4).toString(16) else "-")
+  b
 
 # Target: 
 #	Name: 'All'
@@ -39,6 +46,9 @@ DEBUG = () ->
 error = () ->
 	if arguments.length == 1 then console.error(arguments[0]) else console.error((i for i in arguments).join(',\t'))
 	
+warn = () ->
+	if arguments.length == 1 then console.warn(arguments[0]) else console.warn((i for i in arguments).join(',\t'))
+	
 info = () ->
 	if arguments.length == 1 then console.info(arguments[0]) else console.info((i for i in arguments).join(',\t'))
 	
@@ -54,89 +64,221 @@ edges = [
 console.log(tsort(edges))
 
 
-class Source
-	file = null
-	dependencies = null
-	
-	@sources = {}
+class Project
+	staging_dir = '=staging/'
+	output_dir = '=build/'
+	@instance = null
+
+	constructor: (options) ->
+		DEBUG 'Constructor'
+		@setOptions(options) if options?
 		
-	@create: (file, target) ->
-		DEBUG 'Source:create()', 'called args=', JSON.stringify(i for i in arguments)
-		if source = Source.get(file)
-			DEBUG 'Source:create()', ''
-			source.addTarget(target)
+	setOptions: (options) ->
+		DEBUG 'Setoptions'
+		@output_dir = options.output_dir if options.output_dir? 
+		@staging_dir = options.output_dir if options.output_dir? 
+
+class Buffer
+	input_files = null
+	output_files = null
+	contents = null
+	staging_dir = null
+	length = 0
+	type = 0
+	
+	@TYPE_SOURCE = 10
+	@TYPE_FILEPATH = 20
+	@TYPE_STRING = 30
+	
+	constructor: (sources, staging_dir) ->
+		@staging_dir = staging_dir
+		files = new Array(@length)
+		for source, index in sources then do (source, index) =>
+			files[index] = source.file
+		@input_files = files
+		@output_files = files
+		@contents = sources
+		@length = sources.length
+		@type = Buffer.TYPE_SOURCE
+		
+		
+	toString: () ->
+		if @type == Buffer.TYPE_SOURCE 
+			contents = new Array(@length)
+	
+			for source, index in @contents then do (source, index) =>
+				#fs.readFile "#{source.file}", 'utf8', (err, fileContents) =>
+				#	wait_for = true and error(err) if err
+				#	@buffer[index] = source.getFileContents()
+				#	if --remaining is 0
+				#		DEBUG 'done reading'
+				#		wait_for = true 
+				contents[index] = fs.readFileSync "#{source.file}", 'utf8'
+			@type = Buffer.TYPE_STRING
+			@contents = contents
+			return @contents
+		else if @type == Buffer.TYPE_FILEPATH 
+			contents = new Array(@length)
+			for data, index in @contents then do (data, index) =>
+				contents[index] = fs.readFileSync "#{data}", 'utf8'
+			@type = Buffer.TYPE_STRING
+			@contents = contents
+			return @contents
+		else if @type == Buffer.TYPE_STRING
+			return @contents
+
+	toFile: () ->
+		if @type == Buffer.TYPE_SOURCE 
+			contents = new Array(@length)
+			for source, index in @contents then do (source, index) =>
+				contents[index] = source.file
+			@type = Buffer.TYPE_FILEPATHS
+			@contents = contents
+			return @contents
+		else if @type == Buffer.TYPE_STRING
+			contents = new Array(@length)
+			for i in [0...@length]
+				filename = uuid4()
+				filename = path.join(@staging_dir, filename)
+				fs.writeFileSync filename, @contents[i], 'utf8'
+				contents[i] = filename
+			@type = Buffer.TYPE_FILEPATHS
+			@contents = contents
+			return @contents
+		else if @type == Buffer.TYPE_FILEPATHS
+			return @contents
+
+
+class NodeManager
+	@unresolved_nodes = {}
+	#@targets = {}
+	@STATUS_UPTODATE = 0
+	@STATUS_NEEDSUPDATE = 10
+	@STATUS_UPDATING = 20
+	
+	@createTarget: (project, name, sources, build_function) ->
+		DEBUG 'NodeManager:createTarget()', 'called args=', JSON.stringify(i for i in arguments)
+		if node = NodeManager.getNode(name)
+			if node.is_target == true
+				warn 'NodeManager:createTarget()', 'Re-defining target ' + name
 		else
-			source = new Source(file, target)
+			node = NodeManager.createNode(project, name)
 			
-		return source
-
-	constructor: (file, target) ->
-		DEBUG 'Source:constructor()', 'called args=', JSON.stringify(i for i in arguments)
-		Source.sources[file] = @
-		@file = file
-		@targets = [target]
-		super()
-
-	###
-	Function: get
-		Retrieve the Source() object for the given file
-	Parameters:
-		file - The path to the source file.
-	Returns:
-		The existing Source() object associated with the file
-	###
-	@get: (file) ->
-		return Source.sources[file]
-
-	###
-	Function: addTarget
-		Retrieve the Source() object for the given file
-	Parameters:
-		file - The path to the source file.
-	Returns:
-		The existing Source() object associated with the file
-	###
-	addTarget: (target) ->
-		@targets.push(target)
+		node.build_function = build_function
+		node.is_target = true
+		
+		for source_name in sources
+			source = NodeManager.createNode(project, source_name)
+			source.is_source = true
+			node.addSource(source)
+		
+		return node
 
 
+	@getNode: (name) ->
+		return NodeManager.unresolved_nodes[name]
+		
+	@createNode: (project, name) ->
+		unless node = NodeManager.unresolved_nodes[name]
+			node = NodeManager.unresolved_nodes[name] = new Node(project, name)		
+		return node
 
-class Target extends Source
-	# Class method. Mapping of all Target names to objects
-	@targets = {}
-	
-	# Array of dependent sources (Source objects)
+# Status
+# 
+class Node extends NodeManager
+	name = null
+	file = null
 	sources = null
-
-	constructor: (name, sources, buildFunction) ->
-		DEBUG 'Target:constructor()', 'called args=', JSON.stringify(i for i in arguments)
+	targets = null
+	buffer = null
+	build_function = null
+	is_target = null
+	is_source = null
+	is_building = false
+	is_up_to_date = false
+	project = null
+	last_updated = 0
+	
+	constructor: (project, name) ->
+		DEBUG 'Node:New()', 'called args=', JSON.stringify(i for i in arguments)
+		@project = project 
 		@name = name
-		Target.targets[name] = @
+		@file = name
 		@sources = []
-		for source in sources
-			@addSource(source)
-		@buildFunction = buildFunction
-		#@buildFunction()
-		@options = {}
-		super()
+		@targets = []
 		
-	build: () ->
-		DEBUG 'Target:build()', 'called args=', JSON.stringify(i for i in arguments)
-		for source in @sources
-			# For each dependent source, see if a corresponding target is defined.
-			# If it is, build it.
-			if dependent_target = Target.get(source.file)
-				dependent_target.build()
-		if @buildFunction
-			DEBUG 'Target:build()', 'calling buildFunction'
-			@buildFunction()
-		
-	@get: (target_name) ->
-		return Target.targets[target_name]
-		
-	addSource: (source) ->
-		@sources.push(Source.create(source, @))
+		# Default build_function action:
+		@build_function = @checkFile
 
+	addSource: (source) ->
+		@sources.push(source) if @sources.indexOf(source) < 0 
+		source.targets.push(@) if source.targets.indexOf(@) < 0 
+
+	buildSources: () ->
+		@is_building = true
+		for source in @sources
+			source.build()
+			
+	checkSourceBuilds: () ->
+		for source in @sources
+			unless source.is_up_to_date and not source.is_building
+				return
+		@buildSelf()
+		return
+	
+	build: () ->
+		#DEBUG 'Node:build()', 'called args=', JSON.stringify(i for i in arguments)
+		if 0 < @sources.length 
+			info 'Building dependencies ' + @name
+			@buildSources()
+		else
+			@buildSelf()
+	
+	buildSelf: () ->
+		if @is_up_to_date
+			info 'Up to date ' + @name
+		else
+			info 'Building ' + @name
+			if @build_function
+				DEBUG 'Node:build()', 'calling build_function'
+				# Fork here and wait until build_function is done
+				@is_building = true
+				if @sources
+					@buffer = new Buffer(@sources, @project.staging_dir)
+				@build_function()
+				# Serial execution
+				@done()
+			else
+				DEBUG 'Node:build()', 'no build_function'
+				@is_building = false
+				if @sources
+					@buffer = new Buffer(@sources, @project.staging_dir)
+				@done()
+				
+	
+	done: () ->
+		@is_up_to_date = true
+		@is_building = false
+		for target in @targets
+			target.checkSourceBuilds()
+	
+	checkFile: () ->
+		fs.statSync(@file)
+	
+	getFileContents: () ->
+		@buffer = fs.readFileSync "#{@file}", 'utf8'
+
+			
+"""
+	getFileContents: () ->
+		fs.readFile "#{@name}", 'utf8', (err, file_contents) =>
+			if err
+				error("readFile #{@name} failed: " + err) 
+			else
+				DEBUG "Read file #{@name}"
+			@buffer = file_contents
+			@done()
+"""
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
 #
@@ -152,14 +294,38 @@ class Target extends Source
 # How to distinguish build ->
 #	@cat <- operates on sources
 #	@coffee2js <-- operates on output
-	
+
+Target = Node
+
 			
 Target::options = (options) ->
 	for key, val of options
 		@options[key] = val
-
-
+		
 Target::cat = () ->
+	
+	@buffer.toString()
+	
+	if 1 < @buffer.length
+		@buffer.contents = @buffer.contents.join('\n')
+		@buffer.length = 1
+	
+	DEBUG "Concatenated files"
+
+
+Target::write = () ->
+	
+	@buffer.toString()
+	
+	if 1 < @buffer.length
+		@buffer.contents = @buffer.contents.join('\n')
+		@buffer.length = 1
+		
+	fs.writeFileSync @name, @buffer.contents, 'utf8'
+	
+	DEBUG "Writing #{@name}"
+
+Target::catold = () ->
 
 	remaining = @sources.length
 	contents = new Array(remaining)
@@ -177,7 +343,6 @@ Target::cat = () ->
 				error("cat #{@name} failed: " + err) 
 			else
 				info "Concatenated #{@name}"
-			
 
 Target::coffee2js = () ->
 	exec cmd_coffee(@sources, @name), (err, stdout, stderr) ->
@@ -188,22 +353,34 @@ Target::coffee2js = () ->
 		
 		
 Target::minify = () ->
-	exec cmd_minify(@sources, @name), (err, stdout, stderr) -> 
+	@buffer.toFile()
+
+	exec cmd_minify(@buffer.contents[0], @name), (err, stdout, stderr) => 
 		if err
 			error("Minify #{@name} failed: " + err) 
 		else
 			info "Minified #{@name}"
 
 Target::appendFile = (file) ->
+	
 	appendFileContents = fs.readFileSync file, 'utf8'
 	unless appendFileContents
 		error 'Could not read file ' + file
+		
+	@buffer.toString()
+	
+	if 1 < @buffer.length
+		@buffer.contents = @buffer.contents.join('\n')
+		@buffer.length = 1
+		
+		
+
 		
 	fileContents = fs.readFileSync @name, 'utf8'
 	unless fileContents
 		error 'Could not read file ' + @name
 		
-	bytesWritten = fs.writeFileSync @name, 'utf8', fileContents + '\n' + appendFileContents
+	bytesWritten = fs.writeFileSync @name, fileContents + '\n' + appendFileContents, 'utf8'
 	unless bytesWritten
 		error 'Could not write file ' + @name
 
@@ -216,7 +393,7 @@ Target::prependFile = (file) ->
 	unless fileContents
 		error 'Could not read file ' + @name
 		
-	bytesWritten = fs.writeFileSync @name, 'utf8', fileContents + '\n' + appendFileContents
+	bytesWritten = fs.writeFileSync @name, fileContents + '\n' + appendFileContents, 'utf8'
 	unless bytesWritten
 		error 'Could not write file ' + @name
 
@@ -226,7 +403,7 @@ Target::append = (append_string) ->
 	unless fileContents
 		error 'Could not read file ' + @name
 		
-	bytesWritten = fs.writeFileSync @name, 'utf8', fileContents + append_string
+	bytesWritten = fs.writeFileSync @name, fileContents + append_string, 'utf8'
 	unless bytesWritten
 		error 'Could not write file ' + @name
 		
@@ -236,7 +413,7 @@ Target::prepend = (prepend_string) ->
 	unless fileContents
 		error 'Could not read file ' + @name
 		
-	bytesWritten = fs.writeFileSync @name, 'utf8', prepend_string + fileContents
+	bytesWritten = fs.writeFileSync @name, prepend_string + fileContents, 'utf8'
 	unless bytesWritten
 		error 'Could not write file ' + @name
 
@@ -271,10 +448,18 @@ timestamp = (time) ->
 		ret = ret + min
 	
 
-Target_func = (name, sources, buildFunction) ->
-	return new Target(name, sources, buildFunction)
+target = (name, sources, build_function) ->
+	project = if Project.instance then Project.instance else new Project()
+	DEBUG project
+	return NodeManager.createTarget(project, name, sources, build_function)
+	
+project = (options) ->
+	if Project.instance
+		Project.instance.setOptions(options)
+		return Project.instance
+	else
+		return project = new Project(options)
 
-#exports.Target = Target
-exports.Target = Target_func
-
+exports.target = target
+exports.project = project
 

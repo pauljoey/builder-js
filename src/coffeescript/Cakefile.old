@@ -1,0 +1,218 @@
+
+	
+prodSrcCoffeeDir	 = 'src/coffee-script'
+testSrcCoffeeDir	 = 'src/coffee-script'
+
+prodTargetJsDir	  = 'media/js'
+testTargetJsDir	  = 'media/js'
+
+prodTargetFileName   = 'supermarkup'
+
+prodTargetCoffeeFile = "#{prodSrcCoffeeDir}/#{prodTargetFileName}.coffee"
+prodTargetJsFile	 = "#{prodTargetJsDir}/#{prodTargetFileName}.js"
+prodTargetJsMinFile  = "#{prodTargetJsDir}/#{prodTargetFileName}.min.js"
+
+prodCoffeeOpts = "--output #{prodTargetJsDir} --compile #{prodTargetCoffeeFile}"
+testCoffeeOpts = "--output #{testTargetJsDir}"
+
+licenseFile = 'LICENSE'
+versionFile = 'VERSION'
+latestVersionFile = 'LATEST'
+
+prodTargetJsReleaseFile = (version) ->
+	return "#{prodTargetJsDir}/#{prodTargetFileName}.#{version}.min.js"
+
+prodCoffeeFiles = [
+	'init'
+	'html'
+	'latex'
+]
+
+task 'watch:all', 'Watch production and test CoffeeScript', ->
+	invoke 'watch:test'
+	invoke 'watch'
+	
+task 'build:all', 'Build production and test CoffeeScript', ->
+	invoke 'build:test'
+	invoke 'build'	
+
+task 'watch', 'Watch prod source files and build changes', ->
+	invoke 'build'
+	util.log "Watching for changes in #{prodSrcCoffeeDir}"
+
+	for file in prodCoffeeFiles then do (file) ->
+		fs.watchFile "#{prodSrcCoffeeDir}/#{file}.coffee", (curr, prev) ->
+			if +curr.mtime isnt +prev.mtime
+				util.log "Saw change in #{prodSrcCoffeeDir}/#{file}.coffee"
+				invoke 'build'
+
+task 'build', 'Build a single JavaScript file from prod files', ->
+	util.log "Building #{prodTargetJsFile}"
+	appContents = new Array remaining = prodCoffeeFiles.length
+	util.log "Appending #{prodCoffeeFiles.length} files to #{prodTargetCoffeeFile}"
+	
+	for file, index in prodCoffeeFiles then do (file, index) ->
+		fs.readFile "#{prodSrcCoffeeDir}/#{file}.coffee"
+				  , 'utf8'
+				  , (err, fileContents) ->
+			handleError(err) if err
+			
+			appContents[index] = fileContents
+			util.log "[#{index + 1}] #{file}.coffee"
+			process() if --remaining is 0
+
+	process = ->
+		fs.writeFile prodTargetCoffeeFile
+				   , appContents.join('\n\n')
+				   , 'utf8'
+				   , (err) ->
+			handleError(err) if err
+			
+			exec "coffee #{prodCoffeeOpts}", (err, stdout, stderr) ->
+				handleError(err) if err
+				message = "Compiled #{prodTargetJsFile}"
+				util.log message
+				displayNotification message
+				#fs.unlink prodTargetCoffeeFile, (err) -> handleError(err) if err
+				prependLicense prodTargetJsFile, licenseFile
+				invoke 'minify'
+
+task 'watch:test', 'Watch test specs and build changes', ->
+	invoke 'build:test'
+	util.log "Watching for changes in #{testSrcCoffeeDir}"
+	
+	fs.readdir testSrcCoffeeDir, (err, files) ->
+		handleError(err) if err
+		for file in files then do (file) ->
+			fs.watchFile "#{testSrcCoffeeDir}/#{file}", (curr, prev) ->
+				if +curr.mtime isnt +prev.mtime
+					coffee testCoffeeOpts, "#{testSrcCoffeeDir}/#{file}"
+
+task 'build:test', 'Build individual test specs', ->
+	util.log 'Building test specs'
+	fs.readdir testSrcCoffeeDir, (err, files) ->
+		handleError(err) if err
+		for file in files then do (file) ->
+			coffee testCoffeeOpts, "#{testSrcCoffeeDir}/#{file}"
+
+task 'minify', 'Minify and obfuscate', ->
+	exec "#{mini}  -o #{prodTargetJsMinFile}  #{prodTargetJsFile}", (err, stdout, stderr) -> 
+		handleError(err) if err
+		message = "Minified #{prodTargetJsMinFile}"
+		util.log message
+		displayNotification message
+		prependLicense prodTargetJsMinFile, licenseFile
+
+task 'release', 'Create release', ->
+	util.log 'Creating release'
+	#invoke 'build' # This runs asyncronously. Need to call beforehand.
+	
+	fs.readFile latestVersionFile, 'utf8', (err, fileContents) ->
+		if err
+			handleError(err)
+			util.log 'Could not load latestVersionFile: ' + latestVersionFile
+			makeRelease()
+		else
+			lastversion = fileContents.match(/[\S]+/)[0] # Grab the first word
+		
+			exec "cmp #{prodTargetJsMinFile} #{prodTargetJsReleaseFile(lastversion)}", (err, stdout, stderr) -> 
+
+				if err
+					handleError(err) 
+					makeRelease()
+				else if not stdout
+					util.log 'No changes since last release ' + lastversion
+				else
+					makeRelease()
+			
+	makeRelease = () ->
+		fs.readFile versionFile, 'utf8', (err, fileContents) ->
+			if err
+				handleError(err)
+				util.log 'Could not load versionFile: ' + versionFile
+				util.log 'Using version 0.0'
+				version = '0.0'
+			else
+				version = fileContents.match(/[\S]+/)[0] # Grab the first word
+				
+			now = new Date()
+			version = version + '.' + timestamp(now)
+
+			exec "cp #{prodTargetJsMinFile} #{prodTargetJsReleaseFile(version)}", (err, stdout, stderr) -> 
+				if err
+					handleError(err)
+				else
+					fs.writeFile latestVersionFile, version, 'utf8', (err) ->
+						handleError('writeFile ' + err) if err
+						util.log 'Created release ' + version
+	
+			#invoke 'build'
+
+coffee = (options = "", file) ->
+	util.log "Compiling #{file}"
+	exec "coffee #{options} --compile #{file}", (err, stdout, stderr) -> 
+		handleError(err) if err
+		displayNotification "Compiled #{file}"
+
+prependLicense = (file, licenseFile) -> 
+	fs.readFile file
+			  , 'utf8'
+			  , (err, fileContents) ->
+		handleError(err) if err
+		
+		fs.readFile licenseFile
+				  , 'utf8'
+				  , (err, licenseFileContents) ->
+			handleError(err) if err
+		
+			fs.writeFile file
+					   , '/*\n' + licenseFileContents + '\n*/\n' + fileContents
+					   , 'utf8'
+					   , (err) ->
+				handleError(err) if err
+
+				message = "License Added #{file}"
+				util.log message
+				displayNotification message
+				
+handleError = (error) -> 
+	util.log error
+	displayNotification error
+		
+		
+timestamp = (time) ->
+
+	year = time.getFullYear()
+	hour = time.getHours()
+	min = time.getMinutes()
+	month = time.getMonth()
+	day = time.getDate()
+
+	ret = String(year)
+	if month+1 < 10
+		ret = ret + '0' + (month+1)
+	else
+		ret = ret + (month+1)
+	if day < 10
+		ret = ret + '0' + day
+	else
+		ret = ret +  day
+	
+	if hour < 10
+		ret = hour + '0' + hour
+	else
+		ret = ret + hour
+		
+	if min < 10
+		ret = min + '0' + min
+	else
+		ret = ret + min
+
+		
+displayNotification = (message = '') -> 
+	options = {
+		title: 'CoffeeScript'
+		image: 'lib/CoffeeScript.png'
+	}
+	try require('./node_modules/growl').notify message, options
+
