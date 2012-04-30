@@ -147,6 +147,17 @@ class Buffer
 			return @contents
 		else if @type == Buffer.TYPE_FILEPATHS
 			return @contents
+	
+	pop: () ->
+		removed = @contents.pop()
+		@length = @contents.length
+		return removed
+
+	shift: () ->
+		removed = @contents.shift()
+		@length = @contents.length
+		return removed
+
 
 
 class NodeManager
@@ -206,6 +217,7 @@ class Node extends NodeManager
 		@file = name
 		@sources = []
 		@targets = []
+		#@buffer = new Buffer(@sources, @project.staging_dir)
 		
 		# Default build_function action:
 		@build_function = @checkFile
@@ -321,28 +333,18 @@ Target::write = () ->
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
 		
-	fs.writeFileSync @name, @buffer.contents, 'utf8'
+	fs.writeFileSync path.join(@project.output_dir, @name), @buffer.contents, 'utf8'
 	
-	DEBUG "Writing #{@name}"
-
-Target::catold = () ->
-
-	remaining = @sources.length
-	contents = new Array(remaining)
+	DEBUG "Writing #{path.join(@project.output_dir, @name)}"
 	
-	for file, index in @sources then do (file, index) ->
-		fs.readFile file, 'utf8', (err, fileContents) ->
-			error(err) if err
-			
-			contents[index] = fileContents
-			process() if --remaining is 0
+	
+Target::read = (files) ->
+	
+	@buffer.toString()
+	if files? and files
+		@buffer = new Buffer(files, @project.staging_dir)
 
-	process = ->
-		fs.writeFile @name, contents.join('\n'), 'utf8', (err) ->
-			if err
-				error("cat #{@name} failed: " + err) 
-			else
-				info "Concatenated #{@name}"
+
 
 Target::coffee2js = () ->
 	exec cmd_coffee(@sources, @name), (err, stdout, stderr) ->
@@ -370,52 +372,38 @@ Target::appendFile = (file) ->
 	@buffer.toString()
 	
 	if 1 < @buffer.length
-		@buffer.contents = @buffer.contents.join('\n')
+		@buffer.contents = @buffer.contents.join('\n') + '\n' + appendFileContents
 		@buffer.length = 1
-		
-		
-
-		
-	fileContents = fs.readFileSync @name, 'utf8'
-	unless fileContents
-		error 'Could not read file ' + @name
-		
-	bytesWritten = fs.writeFileSync @name, fileContents + '\n' + appendFileContents, 'utf8'
-	unless bytesWritten
-		error 'Could not write file ' + @name
 
 Target::prependFile = (file) ->
-	appendFileContents = fs.readFileSync file, 'utf8'
-	unless appendFileContents
+	
+	prependFileContents = fs.readFileSync file, 'utf8'
+	unless prependFileContents
 		error 'Could not read file ' + file
 		
-	fileContents = fs.readFileSync @name, 'utf8'
-	unless fileContents
-		error 'Could not read file ' + @name
-		
-	bytesWritten = fs.writeFileSync @name, fileContents + '\n' + appendFileContents, 'utf8'
-	unless bytesWritten
-		error 'Could not write file ' + @name
+	@buffer.toString()
+	
+	if 1 < @buffer.length
+		@buffer.contents = prependFileContents + '\n' + @buffer.contents.join('\n')
+		@buffer.length = 1
 
 
 Target::append = (append_string) ->
-	fileContents = fs.readFileSync @name, 'utf8'
-	unless fileContents
-		error 'Could not read file ' + @name
 		
-	bytesWritten = fs.writeFileSync @name, fileContents + append_string, 'utf8'
-	unless bytesWritten
-		error 'Could not write file ' + @name
+	@buffer.toString()
+	
+	if 1 < @buffer.length
+		@buffer.contents = @buffer.contents.join('\n') + '\n' + append_string
+		@buffer.length = 1
 		
 
 Target::prepend = (prepend_string) ->
-	fileContents = fs.readFileSync @name, 'utf8'
-	unless fileContents
-		error 'Could not read file ' + @name
-		
-	bytesWritten = fs.writeFileSync @name, prepend_string + fileContents, 'utf8'
-	unless bytesWritten
-		error 'Could not write file ' + @name
+			
+	@buffer.toString()
+	
+	if 1 < @buffer.length
+		@buffer.contents = prepend_string + '\n' + @buffer.contents.join('\n')
+		@buffer.length = 1
 
 	
 	

@@ -11,8 +11,8 @@ project = project opt =
 all = target 'All', ['app.js.min']
 
 target 'app.js.min', ['app.js'], ->
-	console.log('We are the DEEEEEEEEEEEE')
 	@minify()
+	@write()
 	
 target 'app.js', ['file1.coffee','file2.coffee'], ->
 	#@read()
