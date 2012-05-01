@@ -64,56 +64,113 @@ edges = [
 console.log(tsort(edges))
 
 
-class Project
+class ProjectManager
+	
+	# Hack
+	@latest = null
+	@PROJECTS = {}
+
+	@getProject: (name) ->
+		return ProjectManager.PROJECTS[name]
+		
+	@createProject: (name, options, nodes) ->
+		if project = ProjectManager.getProject(project)
+			# Set options, add nodes
+		else
+			project = ProjectManager.PROJECTS[name] = new Project(name, options)
+			#p2 = project
+			#DEBUG 'Nodes time!'
+			#nodes()
+		
+		ProjectManager.latest = project
+		return project
+
+
+class NodeManager
+
+	__unresolved_nodes = null
+
+	#@targets = {}
+	@STATUS_UPTODATE = 0
+	@STATUS_NEEDSUPDATE = 10
+	@STATUS_UPDATING = 20
+	
+	constructor: (options) ->
+		@__unresolved_nodes = {}
+	
+	createTarget: (name, sources, build_function) ->
+		#DEBUG 'NodeManager:createTarget()', 'called args=', JSON.stringify(i for i in arguments)
+		if node = @getNode(name)
+			if node.is_target == true
+				warn 'NodeManager:createTarget()', 'Re-defining target ' + name
+		else
+			node = @createNode(name)
+			
+		node.build_function = build_function
+		node.is_target = true
+		
+		for source_name in sources
+			source = @createNode(source_name)
+			source.is_source = true
+			node.addSource(source)
+		
+		return node
+
+
+	getNode: (name) ->
+		return @__unresolved_nodes[name]
+		
+	createNode: (name) ->
+		unless node = @__unresolved_nodes[name]
+			node = @__unresolved_nodes[name] = new Node(@, name)		
+		return node
+
+
+class Project extends NodeManager
 	staging_dir = '=staging/'
 	output_dir = '=build/'
+	source_dir = './'
 	@instance = null
 
 	constructor: (options) ->
-		DEBUG 'Constructor'
 		@setOptions(options) if options?
+		super()
 		
 	setOptions: (options) ->
-		DEBUG 'Setoptions'
 		@output_dir = options.output_dir if options.output_dir? 
 		@staging_dir = options.output_dir if options.output_dir? 
+		@source_dir = options.source_dir if options.source_dir? 
+
 
 class Buffer
-	input_files = null
-	output_files = null
 	contents = null
-	staging_dir = null
 	length = 0
 	type = 0
-	
+
+	@TYPE_EMPTY = 0
 	@TYPE_SOURCE = 10
 	@TYPE_FILEPATH = 20
 	@TYPE_STRING = 30
 	
-	constructor: (sources, staging_dir) ->
-		@staging_dir = staging_dir
-		files = new Array(@length)
-		for source, index in sources then do (source, index) =>
-			files[index] = source.file
-		@input_files = files
-		@output_files = files
-		@contents = sources
-		@length = sources.length
-		@type = Buffer.TYPE_SOURCE
-		
-		
+	@TEMP_FILES = []
+	
+	constructor: (node) ->
+		@node = node
+		@clear()
+
+
+	clear: () ->
+		@contents = null
+		@length = 0
+		@type = Buffer.TYPE_EMPTY
+
+
 	toString: () ->
 		if @type == Buffer.TYPE_SOURCE 
 			contents = new Array(@length)
-	
+			
 			for source, index in @contents then do (source, index) =>
-				#fs.readFile "#{source.file}", 'utf8', (err, fileContents) =>
-				#	wait_for = true and error(err) if err
-				#	@buffer[index] = source.getFileContents()
-				#	if --remaining is 0
-				#		DEBUG 'done reading'
-				#		wait_for = true 
-				contents[index] = fs.readFileSync "#{source.file}", 'utf8'
+				contents[index] = fs.readFileSync "#{@node.findSourcePath(source.file)}", 'utf8'
 			@type = Buffer.TYPE_STRING
 			@contents = contents
 			return @contents
@@ -131,15 +188,14 @@ class Buffer
 		if @type == Buffer.TYPE_SOURCE 
 			contents = new Array(@length)
 			for source, index in @contents then do (source, index) =>
-				contents[index] = source.file
+				contents[index] = @node.findSourcePath(source.file)
 			@type = Buffer.TYPE_FILEPATHS
 			@contents = contents
 			return @contents
 		else if @type == Buffer.TYPE_STRING
 			contents = new Array(@length)
 			for i in [0...@length]
-				filename = uuid4()
-				filename = path.join(@staging_dir, filename)
+				filename = @getTempFile()
 				fs.writeFileSync filename, @contents[i], 'utf8'
 				contents[i] = filename
 			@type = Buffer.TYPE_FILEPATHS
@@ -147,7 +203,8 @@ class Buffer
 			return @contents
 		else if @type == Buffer.TYPE_FILEPATHS
 			return @contents
-	
+
+		
 	pop: () ->
 		removed = @contents.pop()
 		@length = @contents.length
@@ -158,41 +215,22 @@ class Buffer
 		@length = @contents.length
 		return removed
 
+	getTempFile: (file) ->
+		file = path.join @node.project.staging_dir, '_tmp_' + @node.name + '.' + uuid4()
+		Buffer.registerTempFile(file)
+		return file
 
+	@registerTempFile: (file) ->
+		DEBUG 'Registering temp file ' + file
+		Buffer.TEMP_FILES.append(file)
+		
+	@deleteTempFiles: () ->
+		DEBUG 'Deleting temp files... '
+		for f in Buffer.TEMP_FILES
+			DEBUG f
+			fs.unlinkSync(f)
 
-class NodeManager
-	@unresolved_nodes = {}
-	#@targets = {}
-	@STATUS_UPTODATE = 0
-	@STATUS_NEEDSUPDATE = 10
-	@STATUS_UPDATING = 20
 	
-	@createTarget: (project, name, sources, build_function) ->
-		DEBUG 'NodeManager:createTarget()', 'called args=', JSON.stringify(i for i in arguments)
-		if node = NodeManager.getNode(name)
-			if node.is_target == true
-				warn 'NodeManager:createTarget()', 'Re-defining target ' + name
-		else
-			node = NodeManager.createNode(project, name)
-			
-		node.build_function = build_function
-		node.is_target = true
-		
-		for source_name in sources
-			source = NodeManager.createNode(project, source_name)
-			source.is_source = true
-			node.addSource(source)
-		
-		return node
-
-
-	@getNode: (name) ->
-		return NodeManager.unresolved_nodes[name]
-		
-	@createNode: (project, name) ->
-		unless node = NodeManager.unresolved_nodes[name]
-			node = NodeManager.unresolved_nodes[name] = new Node(project, name)		
-		return node
 
 # Status
 # 
@@ -211,13 +249,13 @@ class Node extends NodeManager
 	last_updated = 0
 	
 	constructor: (project, name) ->
-		DEBUG 'Node:New()', 'called args=', JSON.stringify(i for i in arguments)
+		#DEBUG 'Node:New()', 'called args=', JSON.stringify(i for i in arguments)
 		@project = project 
 		@name = name
 		@file = name
 		@sources = []
 		@targets = []
-		#@buffer = new Buffer(@sources, @project.staging_dir)
+		@buffer = new Buffer(@)
 		
 		# Default build_function action:
 		@build_function = @checkFile
@@ -255,42 +293,74 @@ class Node extends NodeManager
 				DEBUG 'Node:build()', 'calling build_function'
 				# Fork here and wait until build_function is done
 				@is_building = true
-				if @sources
-					@buffer = new Buffer(@sources, @project.staging_dir)
+				#if @sources
+				#	@buffer = new Buffer(@sources, @project.staging_dir)
+				@start()
 				@build_function()
 				# Serial execution
 				@done()
 			else
 				DEBUG 'Node:build()', 'no build_function'
 				@is_building = false
-				if @sources
-					@buffer = new Buffer(@sources, @project.staging_dir)
+				#if @sources
+				#	@buffer = new Buffer(@sources, @project.staging_dir)
+				@start()
 				@done()
 				
+	###				
+	getFile: () ->
+		unless @is_up_to_date
+			@build()
+		return @findSourcePath(@file)
+
+		
+	getContents: () ->
+		unless @is_up_to_date
+			@build()
+		p = @findSourcePath(@file)
+		contents = fs.readFileSync p, 'utf8'
+		return contents
+	###
 	
+	# Copy sources into buffer	
+	start: () ->
+		@buffer.clear()
+		
+		# May make this an explicit build command?
+		@buffer.contents = @sources
+		@buffer.length = @sources.length
+		@buffer.type = Buffer.TYPE_SOURCE
+		
 	done: () ->
 		@is_up_to_date = true
 		@is_building = false
+		
+		# Copy self into buffer if we have no sources or rule - ie, a leaf node
+		# ... I think this makes sense to do ...
+		if @sources.length < 1
+			@buffer = @
+		
+		# Tell parents that we're done building
 		for target in @targets
 			target.checkSourceBuilds()
 	
+	findSourcePath: (rel_path) ->
+		p = path.join @project.output_dir, rel_path
+		if path.exists p
+			return p
+		p = path.join @project.staging_dir, rel_path
+		if path.exists p
+			return p
+		p = path.join @project.source_dir, rel_path
+		if path.exists p
+			return p
+		else
+			return rel_path
+			
+			
 	checkFile: () ->
 		fs.statSync(@file)
 	
-	getFileContents: () ->
-		@buffer = fs.readFileSync "#{@file}", 'utf8'
-
-			
-"""
-	getFileContents: () ->
-		fs.readFile "#{@name}", 'utf8', (err, file_contents) =>
-			if err
-				error("readFile #{@name} failed: " + err) 
-			else
-				DEBUG "Read file #{@name}"
-			@buffer = file_contents
-			@done()
-"""
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
 #
@@ -325,33 +395,54 @@ Target::cat = () ->
 	DEBUG "Concatenated files"
 
 
+# Writes buffer contents to output directory (using target name as the filename)
 Target::write = () ->
 	
 	@buffer.toString()
 	
+	# cat?
 	if 1 < @buffer.length
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
 		
-	fs.writeFileSync path.join(@project.output_dir, @name), @buffer.contents, 'utf8'
+	loc = path.join @project.output_dir, @name
 	
-	DEBUG "Writing #{path.join(@project.output_dir, @name)}"
+	fs.writeFileSync loc, @buffer.contents, 'utf8'
 	
+	DEBUG "Writing #{loc}"
 	
-Target::read = (files) ->
+# Writes buffer contents to staging directory (using target name as the filename)
+Target::writeTmp = (filename) ->
 	
 	@buffer.toString()
-	if files? and files
-		@buffer = new Buffer(files, @project.staging_dir)
-
-
+	
+	# cat?
+	if 1 < @buffer.length
+		@buffer.contents = @buffer.contents.join('\n')
+		@buffer.length = 1
+		
+	loc = path.join @project.staging_dir, @name
+	
+	fs.writeFileSync loc, @buffer.contents, 'utf8'
+	
+	DEBUG "Writing #{loc}"
+	
 
 Target::coffee2js = () ->
-	exec cmd_coffee(@sources, @name), (err, stdout, stderr) ->
-		if err
-			error("coffee #{@name} failed: " + err) 
-		else
-			info "Compiled #{@name}"
+
+	@buffer.toFile()
+	
+	for i in [0...@buffer.length]
+		file = @buffer.contents[i]
+		file_out = changeExtension(file, 'coffee','js')
+		file_out = path.join @project.staging_dir, file_out
+		
+		DEBUG 'here ', file, file_out
+		exec cmd_coffee(file, file_out), (err, stdout, stderr) ->
+			if err
+				error("coffee #{file} failed: " + err) 
+			else
+				info "Compiled #{file} to #{file_out}"
 		
 		
 Target::minify = () ->
@@ -405,7 +496,14 @@ Target::prepend = (prepend_string) ->
 		@buffer.contents = prepend_string + '\n' + @buffer.contents.join('\n')
 		@buffer.length = 1
 
-	
+changeExtension = (filename, oldext, newext) ->
+	r = new RegExp('\.' + oldext, 'i')
+	if filename.match(r)
+		filename = filename.replace(r, '.' + newext)
+	else
+		filename = filename + '.' + newext
+	return filename
+
 	
 timestamp = (time) ->
 
@@ -435,18 +533,31 @@ timestamp = (time) ->
 	else
 		ret = ret + min
 	
-
+###
 target = (name, sources, build_function) ->
-	project = if Project.instance then Project.instance else new Project()
-	DEBUG project
+	if Project.instance
+		project = Project.instance
+	else 
+		project = Project.instance = new Project()
 	return NodeManager.createTarget(project, name, sources, build_function)
-	
+
 project = (options) ->
 	if Project.instance
 		Project.instance.setOptions(options)
 		return Project.instance
 	else
-		return project = new Project(options)
+		return Project.instance = new Project(options)
+###
+
+target = (name, sources, build_function) ->
+	project = ProjectManager.latest
+	unless project
+		error 'No project declared'
+	else 
+		return project.createTarget(name, sources, build_function)
+
+
+project = ProjectManager.createProject
 
 exports.target = target
 exports.project = project
