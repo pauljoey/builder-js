@@ -5,25 +5,27 @@ target = builder.target
 project = builder.project
 
 prj = project 'builder', {
-		output_dir: '=build/'
+		build_dir: '=build/'
 		staging_dir: '=staging/'
 		source_dir: './'
 	}
 
-all = target 'All', ['app.js.min']
+all = target 'All', ['js/app.js.min']
 
-target 'app.js.min', ['app.js'], ->
-	#@read()
+target 'js/app.js.min', ['app.js'], ->
+	@read()
 	console.log('We are the DEEEEEEEEEEEE')
 	@minify()
 	@write()
 	
 target 'app.js', ['app.coffee'], ->
+	@read()
 	@coffee2js()
 	@write()
 	
 
 target 'app.coffee', ['file1.coffee','file2.coffee'], ->
+	@read()
 	@cat()
 	@write()
 	

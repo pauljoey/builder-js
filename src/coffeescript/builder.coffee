@@ -5,6 +5,7 @@ cmd_coffee = (sources, output) ->
 cmd_minify = (sources, output) ->
 	"yui-compressor  -o #{output}  #{sources}"
 
+coffee = require 'coffee-script'
 fs	 = require 'fs'
 path = require 'path'
 {exec} = require 'child_process'
@@ -127,18 +128,20 @@ class NodeManager
 
 
 class Project extends NodeManager
+	name = ''
 	staging_dir = '=staging/'
-	output_dir = '=build/'
+	build_dir = '=build/'
 	source_dir = './'
 	@instance = null
 
-	constructor: (options) ->
+	constructor: (name, options) ->
+		@name = name
 		@setOptions(options) if options?
 		super()
 		
 	setOptions: (options) ->
-		@output_dir = options.output_dir if options.output_dir? 
-		@staging_dir = options.output_dir if options.output_dir? 
+		@build_dir = options.build_dir if options.build_dir? 
+		@staging_dir = options.build_dir if options.build_dir? 
 		@source_dir = options.source_dir if options.source_dir? 
 
 
@@ -170,7 +173,10 @@ class Buffer
 			contents = new Array(@length)
 			
 			for source, index in @contents then do (source, index) =>
-				contents[index] = fs.readFileSync "#{@node.findSourcePath(source.file)}", 'utf8'
+				f = @node.findSourcePath(source.file)
+				DEBUG f
+				contents[index] = fs.readFileSync "#{f}", 'utf8'
+				DEBUG 'done'
 			@type = Buffer.TYPE_STRING
 			@contents = contents
 			return @contents
@@ -217,6 +223,8 @@ class Buffer
 
 	getTempFile: (file) ->
 		file = path.join @node.project.staging_dir, '_tmp_' + @node.name + '.' + uuid4()
+		# Make sure path exists
+		mkdirP path.dirname(file)
 		Buffer.registerTempFile(file)
 		return file
 
@@ -327,9 +335,9 @@ class Node extends NodeManager
 		@buffer.clear()
 		
 		# May make this an explicit build command?
-		@buffer.contents = @sources
-		@buffer.length = @sources.length
-		@buffer.type = Buffer.TYPE_SOURCE
+		# @buffer.contents = @sources
+		# @buffer.length = @sources.length
+		# @buffer.type = Buffer.TYPE_SOURCE
 		
 	done: () ->
 		@is_up_to_date = true
@@ -345,14 +353,16 @@ class Node extends NodeManager
 			target.checkSourceBuilds()
 	
 	findSourcePath: (rel_path) ->
-		p = path.join @project.output_dir, rel_path
-		if path.exists p
+		p = path.normalize path.join @project.build_dir, rel_path
+		DEBUG 'findSourcePath() ' + p
+		if path.existsSync p
+			DEBUG 'findSourcePath() found'
 			return p
-		p = path.join @project.staging_dir, rel_path
-		if path.exists p
+		p = path.normalize path.join @project.staging_dir, rel_path
+		if path.existsSync p
 			return p
-		p = path.join @project.source_dir, rel_path
-		if path.exists p
+		p = path.normalize path.join @project.source_dir, rel_path
+		if path.existsSync p
 			return p
 		else
 			return rel_path
@@ -384,6 +394,23 @@ Target::options = (options) ->
 	for key, val of options
 		@options[key] = val
 		
+Target::read = () ->
+
+	# May make this an explicit build command?
+	@buffer.contents = @sources
+	@buffer.length = @sources.length
+	@buffer.type = Buffer.TYPE_SOURCE
+
+Target::pop = () ->
+
+	@buffer.pop()
+
+
+Target::shift = () ->
+
+	@buffer.shift()
+
+
 Target::cat = () ->
 	
 	@buffer.toString()
@@ -391,6 +418,7 @@ Target::cat = () ->
 	if 1 < @buffer.length
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
+	
 	
 	DEBUG "Concatenated files"
 
@@ -405,7 +433,10 @@ Target::write = () ->
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
 		
-	loc = path.join @project.output_dir, @name
+	loc = path.join @project.build_dir, @name
+	
+	# Make sure directory exists
+	mkdirP path.dirname loc
 	
 	fs.writeFileSync loc, @buffer.contents, 'utf8'
 	
@@ -429,7 +460,7 @@ Target::writeTmp = (filename) ->
 	
 
 Target::coffee2js = () ->
-
+	###
 	@buffer.toFile()
 	
 	for i in [0...@buffer.length]
@@ -443,12 +474,20 @@ Target::coffee2js = () ->
 				error("coffee #{file} failed: " + err) 
 			else
 				info "Compiled #{file} to #{file_out}"
-		
+	###
+	
+	@buffer.toString()
+
+	for i in [0...@buffer.length]
+		c = @buffer.contents[i]
+		compiled = coffee.compile(c)
+		@buffer.contents[i] = compiled
+
 		
 Target::minify = () ->
 	@buffer.toFile()
 
-	exec cmd_minify(@buffer.contents[0], @name), (err, stdout, stderr) => 
+	exec cmd_minify(@buffer.contents[0], path.join @project.build_dir, @name), (err, stdout, stderr) => 
 		if err
 			error("Minify #{@name} failed: " + err) 
 		else
@@ -532,7 +571,33 @@ timestamp = (time) ->
 		ret = min + '0' + min
 	else
 		ret = ret + min
-	
+
+mkdirP = (p, mode) ->
+	p = path.normalize(p)
+	# Quick check and return
+	if path.existsSync(p)
+		return true
+
+	parts = p.split('/')
+	# Search backward to find first non-missing directory.
+	dirs = parts.length
+	pos = dirs
+	missing_pos = 1
+	while 0 < pos
+		if path.existsSync(parts[0...pos].join('/'))
+			missing_pos = pos + 1
+			break
+		else
+		pos -= 1
+
+	# Create directories recursively from there.
+	pos = missing_pos
+	while pos <= dirs
+		DEBUG 'mkdirP() Creating ' + parts[0...pos].join('/')
+		fs.mkdirSync parts[0...pos].join('/')
+		pos += 1
+
+
 ###
 target = (name, sources, build_function) ->
 	if Project.instance
