@@ -3,7 +3,7 @@ cmd_coffee = (sources, output) ->
 	"coffee --output #{output} --compile #{sources}"
 	
 cmd_minify = (sources, output) ->
-	"yui-compressor  -o #{output}  #{sources}"
+	"yui-compressor --type js -o #{output}  #{sources}"
 
 coffee = require 'coffee-script'
 fs	 = require 'fs'
@@ -13,6 +13,8 @@ util   = require 'util'
 #mini = 'yui-compressor -o'
 
 tsort   = (require './tsort').tsort
+
+dirsep = '/'
 
 uuid4 = (a, b) ->
   b = a = ""
@@ -141,7 +143,7 @@ class Project extends NodeManager
 		
 	setOptions: (options) ->
 		@build_dir = options.build_dir if options.build_dir? 
-		@staging_dir = options.build_dir if options.build_dir? 
+		@staging_dir = options.staging_dir if options.staging_dir? 
 		@source_dir = options.source_dir if options.source_dir? 
 
 
@@ -222,7 +224,7 @@ class Buffer
 		return removed
 
 	getTempFile: (file) ->
-		file = path.join @node.project.staging_dir, '_tmp_' + @node.name + '.' + uuid4()
+		file = path.join @node.project.staging_dir, '._tmp_' + @node.name.replace(dirsep,'_') + '.' + uuid4()
 		# Make sure path exists
 		mkdirP path.dirname(file)
 		Buffer.registerTempFile(file)
@@ -230,7 +232,7 @@ class Buffer
 
 	@registerTempFile: (file) ->
 		DEBUG 'Registering temp file ' + file
-		Buffer.TEMP_FILES.append(file)
+		Buffer.TEMP_FILES.push(file)
 		
 	@deleteTempFiles: () ->
 		DEBUG 'Deleting temp files... '
@@ -354,9 +356,7 @@ class Node extends NodeManager
 	
 	findSourcePath: (rel_path) ->
 		p = path.normalize path.join @project.build_dir, rel_path
-		DEBUG 'findSourcePath() ' + p
 		if path.existsSync p
-			DEBUG 'findSourcePath() found'
 			return p
 		p = path.normalize path.join @project.staging_dir, rel_path
 		if path.existsSync p
@@ -454,6 +454,9 @@ Target::writeTmp = (filename) ->
 		
 	loc = path.join @project.staging_dir, @name
 	
+	# Make sure directory exists
+	mkdirP path.dirname loc
+	
 	fs.writeFileSync loc, @buffer.contents, 'utf8'
 	
 	DEBUG "Writing #{loc}"
@@ -486,8 +489,13 @@ Target::coffee2js = () ->
 		
 Target::minify = () ->
 	@buffer.toFile()
+	
+	input = @buffer.contents[0]
+	DEBUG input
+	output = path.join @project.build_dir, @name
+	DEBUG output
 
-	exec cmd_minify(@buffer.contents[0], path.join @project.build_dir, @name), (err, stdout, stderr) => 
+	exec cmd_minify(input, output), (err, stdout, stderr) => 
 		if err
 			error("Minify #{@name} failed: " + err) 
 		else
@@ -578,13 +586,13 @@ mkdirP = (p, mode) ->
 	if path.existsSync(p)
 		return true
 
-	parts = p.split('/')
+	parts = p.split(dirsep)
 	# Search backward to find first non-missing directory.
 	dirs = parts.length
 	pos = dirs
 	missing_pos = 1
 	while 0 < pos
-		if path.existsSync(parts[0...pos].join('/'))
+		if path.existsSync(parts[0...pos].join(dirsep))
 			missing_pos = pos + 1
 			break
 		else
@@ -593,8 +601,8 @@ mkdirP = (p, mode) ->
 	# Create directories recursively from there.
 	pos = missing_pos
 	while pos <= dirs
-		DEBUG 'mkdirP() Creating ' + parts[0...pos].join('/')
-		fs.mkdirSync parts[0...pos].join('/')
+		DEBUG 'mkdirP() Creating ' + parts[0...pos].join(dirsep)
+		fs.mkdirSync parts[0...pos].join(dirsep)
 		pos += 1
 
 

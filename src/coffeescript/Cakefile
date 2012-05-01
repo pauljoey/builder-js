@@ -4,14 +4,15 @@ builder   = require './builder'
 target = builder.target
 project = builder.project
 
-prj = project 'builder', {
-		build_dir: '=build/'
-		staging_dir: '=staging/'
-		source_dir: './'
-	}
+test = project('builder', 
+	build_dir: '=build/'
+	staging_dir: '=staging/'
+	source_dir: './'
+)
 
 all = target 'All', ['js/app.js.min']
 
+###
 target 'js/app.js.min', ['app.js'], ->
 	@read()
 	console.log('We are the DEEEEEEEEEEEE')
@@ -21,6 +22,13 @@ target 'js/app.js.min', ['app.js'], ->
 target 'app.js', ['app.coffee'], ->
 	@read()
 	@coffee2js()
+	@write()
+###	
+
+target 'js/app.js.min', ['app.coffee'], ->
+	@read()
+	@coffee2js()
+	@minify()
 	@write()
 	
 
