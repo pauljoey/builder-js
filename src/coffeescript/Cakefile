@@ -5,9 +5,9 @@ target = builder.target
 project = builder.project
 
 test = project('builder', 
-	build_dir: '=build/'
-	staging_dir: '=staging/'
-	source_dir: './'
+	build_dir: './=build'
+	staging_dir: './=staging'
+	source_dir: './test_src'
 )
 
 all = target 'All', ['js/app.js.min']
@@ -28,14 +28,16 @@ target 'app.js', ['app.coffee'], ->
 target 'js/app.js.min', ['app.coffee'], ->
 	@read()
 	@coffee2js()
+	@write('js/app.js')
 	@minify()
+	@prependFile('LICENSE')
 	@write()
 	
 
 target 'app.coffee', ['file1.coffee','file2.coffee'], ->
 	@read()
 	@cat()
-	@write()
+	@writeTmp()
 	
 
 task 'build', 'Build Project', ->

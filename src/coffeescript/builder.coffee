@@ -5,12 +5,20 @@ cmd_coffee = (sources, output) ->
 cmd_minify = (sources, output) ->
 	"yui-compressor --type js -o #{output}  #{sources}"
 
+
+shell = require('shelljs')
+exports.ls = shell.ls
+
 coffee = require 'coffee-script'
 fs	 = require 'fs'
 path = require 'path'
-{exec} = require 'child_process'
+exec = require('child_process').exec
 util   = require 'util'
 #mini = 'yui-compressor -o'
+
+
+
+#command = require('common-node').subprocess.command
 
 tsort   = (require './tsort').tsort
 
@@ -197,7 +205,7 @@ class Buffer
 			contents = new Array(@length)
 			for source, index in @contents then do (source, index) =>
 				contents[index] = @node.findSourcePath(source.file)
-			@type = Buffer.TYPE_FILEPATHS
+			@type = Buffer.TYPE_FILEPATH
 			@contents = contents
 			return @contents
 		else if @type == Buffer.TYPE_STRING
@@ -206,10 +214,10 @@ class Buffer
 				filename = @getTempFile()
 				fs.writeFileSync filename, @contents[i], 'utf8'
 				contents[i] = filename
-			@type = Buffer.TYPE_FILEPATHS
+			@type = Buffer.TYPE_FILEPATH
 			@contents = contents
 			return @contents
-		else if @type == Buffer.TYPE_FILEPATHS
+		else if @type == Buffer.TYPE_FILEPATH
 			return @contents
 
 		
@@ -237,7 +245,6 @@ class Buffer
 	@deleteTempFiles: () ->
 		DEBUG 'Deleting temp files... '
 		for f in Buffer.TEMP_FILES
-			DEBUG f
 			fs.unlinkSync(f)
 
 	
@@ -369,7 +376,8 @@ class Node extends NodeManager
 			
 			
 	checkFile: () ->
-		fs.statSync(@file)
+		p = @findSourcePath(@file)
+		fs.statSync(p)
 	
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
@@ -419,12 +427,11 @@ Target::cat = () ->
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
 	
-	
 	DEBUG "Concatenated files"
 
 
 # Writes buffer contents to output directory (using target name as the filename)
-Target::write = () ->
+Target::write = (filename) ->
 	
 	@buffer.toString()
 	
@@ -432,8 +439,11 @@ Target::write = () ->
 	if 1 < @buffer.length
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
+	
+	unless filename? and filename
+		filename = @name
 		
-	loc = path.join @project.build_dir, @name
+	loc = path.join @project.build_dir, filename
 	
 	# Make sure directory exists
 	mkdirP path.dirname loc
@@ -452,7 +462,10 @@ Target::writeTmp = (filename) ->
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
 		
-	loc = path.join @project.staging_dir, @name
+	unless filename? and filename
+		filename = @name
+		
+	loc = path.join @project.staging_dir, filename
 	
 	# Make sure directory exists
 	mkdirP path.dirname loc
@@ -491,57 +504,68 @@ Target::minify = () ->
 	@buffer.toFile()
 	
 	input = @buffer.contents[0]
-	DEBUG input
+	DEBUG 'input ' + input
 	output = path.join @project.build_dir, @name
 	DEBUG output
 
-	exec cmd_minify(input, output), (err, stdout, stderr) => 
-		if err
-			error("Minify #{@name} failed: " + err) 
-		else
-			info "Minified #{@name}"
+	result = shell.exec cmd_minify(input, output)
+	
+	DEBUG result
+	
+	info "Minified #{output}"
+	
+	@buffer.contents[0] = output
+	DEBUG 'Post-minified contents', @buffer.contents
 
 Target::appendFile = (file) ->
+
+	@buffer.toString()
+	
+	info "Append " + file
+	
+	file = @findSourcePath(file)
 	
 	appendFileContents = fs.readFileSync file, 'utf8'
 	unless appendFileContents
 		error 'Could not read file ' + file
 		
-	@buffer.toString()
-	
-	if 1 < @buffer.length
-		@buffer.contents = @buffer.contents.join('\n') + '\n' + appendFileContents
-		@buffer.length = 1
+	for i in [0...@buffer.length]
+		@buffer.contents[i] = @buffer.contents[i] + '\n' + appendFileContents
+
+	DEBUG 'New contents: ', @buffer.contents
 
 Target::prependFile = (file) ->
+
+	@buffer.toString()
+	
+	info "Prepend " + file
+	
+	file = @findSourcePath(file)
 	
 	prependFileContents = fs.readFileSync file, 'utf8'
 	unless prependFileContents
 		error 'Could not read file ' + file
-		
-	@buffer.toString()
 	
-	if 1 < @buffer.length
-		@buffer.contents = prependFileContents + '\n' + @buffer.contents.join('\n')
-		@buffer.length = 1
-
+	for i in [0...@buffer.length]
+		@buffer.contents[i] = prependFileContents + '\n' + @buffer.contents[i]
+		
+	DEBUG 'New contents: ', @buffer.contents
 
 Target::append = (append_string) ->
 		
 	@buffer.toString()
 	
-	if 1 < @buffer.length
-		@buffer.contents = @buffer.contents.join('\n') + '\n' + append_string
-		@buffer.length = 1
+	for i in [0...@buffer.length]
+		@buffer.contents[i] = @buffer.contents[i] + '\n' + append_string
 		
 
 Target::prepend = (prepend_string) ->
 			
 	@buffer.toString()
 	
-	if 1 < @buffer.length
-		@buffer.contents = prepend_string + '\n' + @buffer.contents.join('\n')
-		@buffer.length = 1
+	for i in [0...@buffer.length]
+		@buffer.contents[i] = prepend_string + '\n' + @buffer.contents[i]
+	
 
 changeExtension = (filename, oldext, newext) ->
 	r = new RegExp('\.' + oldext, 'i')
