@@ -20,7 +20,7 @@ util   = require 'util'
 
 #command = require('common-node').subprocess.command
 
-tsort   = (require './tsort').tsort
+tsort   = require('./tsort').tsort
 
 dirsep = '/'
 
@@ -56,6 +56,7 @@ DEBUG = () ->
 
 error = () ->
 	if arguments.length == 1 then console.error(arguments[0]) else console.error((i for i in arguments).join(',\t'))
+	throw arguments
 	
 warn = () ->
 	if arguments.length == 1 then console.warn(arguments[0]) else console.warn((i for i in arguments).join(',\t'))
@@ -184,9 +185,8 @@ class Buffer
 			
 			for source, index in @contents then do (source, index) =>
 				f = @node.findSourcePath(source.file)
-				DEBUG f
+				DEBUG 'Reading ' + f
 				contents[index] = fs.readFileSync "#{f}", 'utf8'
-				DEBUG 'done'
 			@type = Buffer.TYPE_STRING
 			@contents = contents
 			return @contents
@@ -431,48 +431,54 @@ Target::cat = () ->
 
 
 # Writes buffer contents to output directory (using target name as the filename)
-Target::write = (filename) ->
+Target::write = (filenames) ->
 	
 	@buffer.toString()
 	
-	# cat?
-	if 1 < @buffer.length
-		@buffer.contents = @buffer.contents.join('\n')
-		@buffer.length = 1
+	if filenames? and filenames
+		if typeof filenames == 'string'
+			filenames = [filenames]
+	else
+		filenames = [@name]
 	
-	unless filename? and filename
-		filename = @name
-		
-	loc = path.join @project.build_dir, filename
+	unless @buffer.length == filenames.length
+		error 'Cannot write files -- buffer length and filenames are different sizes'
 	
-	# Make sure directory exists
-	mkdirP path.dirname loc
+	for i in [0...@buffer.length]
 	
-	fs.writeFileSync loc, @buffer.contents, 'utf8'
+		loc = path.join @project.build_dir, filenames[i]
 	
-	DEBUG "Writing #{loc}"
+		# Make sure directory exists
+		mkdirP path.dirname loc
+	
+		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
+	
+		DEBUG "Writing #{loc}"
 	
 # Writes buffer contents to staging directory (using target name as the filename)
-Target::writeTmp = (filename) ->
+Target::writeTmp = (filenames) ->
 	
 	@buffer.toString()
 	
-	# cat?
-	if 1 < @buffer.length
-		@buffer.contents = @buffer.contents.join('\n')
-		@buffer.length = 1
-		
-	unless filename? and filename
-		filename = @name
-		
-	loc = path.join @project.staging_dir, filename
+	if filenames? and filenames
+		if typeof filenames == 'string'
+			filenames = [filenames]
+	else
+		filenames = [@name]
 	
-	# Make sure directory exists
-	mkdirP path.dirname loc
+	unless @buffer.length == filenames.length
+		error 'Cannot write files -- buffer length and filenames are different sizes'
 	
-	fs.writeFileSync loc, @buffer.contents, 'utf8'
+	for i in [0...@buffer.length]
 	
-	DEBUG "Writing #{loc}"
+		loc = path.join @project.staging_dir, filenames[i]
+	
+		# Make sure directory exists
+		mkdirP path.dirname loc
+	
+		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
+	
+		DEBUG "Writing #{loc}"
 	
 
 Target::coffee2js = () ->
@@ -504,18 +510,13 @@ Target::minify = () ->
 	@buffer.toFile()
 	
 	input = @buffer.contents[0]
-	DEBUG 'input ' + input
 	output = path.join @project.build_dir, @name
-	DEBUG output
 
 	result = shell.exec cmd_minify(input, output)
-	
-	DEBUG result
 	
 	info "Minified #{output}"
 	
 	@buffer.contents[0] = output
-	DEBUG 'Post-minified contents', @buffer.contents
 
 Target::appendFile = (file) ->
 
@@ -525,14 +526,12 @@ Target::appendFile = (file) ->
 	
 	file = @findSourcePath(file)
 	
-	appendFileContents = fs.readFileSync file, 'utf8'
-	unless appendFileContents
+	contents = fs.readFileSync file, 'utf8'
+	unless contents
 		error 'Could not read file ' + file
 		
 	for i in [0...@buffer.length]
-		@buffer.contents[i] = @buffer.contents[i] + '\n' + appendFileContents
-
-	DEBUG 'New contents: ', @buffer.contents
+		@buffer.contents[i] = @buffer.contents[i] + '\n' + contents
 
 Target::prependFile = (file) ->
 
@@ -542,15 +541,14 @@ Target::prependFile = (file) ->
 	
 	file = @findSourcePath(file)
 	
-	prependFileContents = fs.readFileSync file, 'utf8'
-	unless prependFileContents
+	contents = fs.readFileSync file, 'utf8'
+	unless contents
 		error 'Could not read file ' + file
-	
-	for i in [0...@buffer.length]
-		@buffer.contents[i] = prependFileContents + '\n' + @buffer.contents[i]
 		
-	DEBUG 'New contents: ', @buffer.contents
-
+	for i in [0...@buffer.length]
+		@buffer.contents[i] = contents + '\n' + @buffer.contents[i]
+			
+		
 Target::append = (append_string) ->
 		
 	@buffer.toString()
@@ -567,15 +565,44 @@ Target::prepend = (prepend_string) ->
 		@buffer.contents[i] = prepend_string + '\n' + @buffer.contents[i]
 	
 
-changeExtension = (filename, oldext, newext) ->
-	r = new RegExp('\.' + oldext, 'i')
-	if filename.match(r)
-		filename = filename.replace(r, '.' + newext)
-	else
-		filename = filename + '.' + newext
-	return filename
+changeDirectory = (filenames, destination) ->
 
+	string = false
+	if typeof filenames == 'string'
+		string = true
+		filenames = [filenames]
+		
+	output = new Array(filenames.length)
+
+	for i in [0...filenames.length]
+		output[i] = path.join destination, path.basename filenames[i]
 	
+	if string
+		return output[0]
+	else
+		return output
+
+changeExtension = (filenames, oldext, newext) ->
+	r = new RegExp('\.' + oldext + '$', 'i')
+	
+	string = false
+	if typeof filenames == 'string'
+		string = true
+		filenames = [filenames]
+		
+	output = new Array(filenames.length)
+
+	for i in [0...filenames.length]
+		if filenames[i].match(r)
+			output[i] = filenames[i].replace(r, '.' + newext)
+		else
+			output[i] = filenames[i] + '.' + newext
+	
+	if string
+		return output[0]
+	else
+		return output
+		
 timestamp = (time) ->
 
 	year = time.getFullYear()
@@ -653,6 +680,9 @@ target = (name, sources, build_function) ->
 	else 
 		return project.createTarget(name, sources, build_function)
 
+exports.debug = DEBUG
+exports.changeExtension = changeExtension
+exports.changeDirectory = changeDirectory
 
 project = ProjectManager.createProject
 

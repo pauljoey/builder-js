@@ -1,5 +1,10 @@
 
-builder   = require './builder'
+test = require 'batman'
+
+# Local
+#builder   = require '../src/cs/builder'
+# Global
+builder   = require 'builder'
 
 target = builder.target
 project = builder.project
@@ -12,6 +17,7 @@ test = project('builder',
 
 all = target 'All', ['js/app.js.min']
 
+coffee_files = builder.ls(test.source_dir + '/coffee/*.coffee')
 ###
 target 'js/app.js.min', ['app.js'], ->
 	@read()
@@ -28,13 +34,13 @@ target 'app.js', ['app.coffee'], ->
 target 'js/app.js.min', ['app.coffee'], ->
 	@read()
 	@coffee2js()
-	@write('js/app.js')
+	@write('js/app.js') # For debugging! :)
 	@minify()
 	@prependFile('LICENSE')
 	@write()
 	
 
-target 'app.coffee', ['file1.coffee','file2.coffee'], ->
+target 'app.coffee', coffee_files, ->
 	@read()
 	@cat()
 	@writeTmp()
@@ -42,6 +48,8 @@ target 'app.coffee', ['file1.coffee','file2.coffee'], ->
 
 task 'build', 'Build Project', ->
 	all.build()
+	builder.debug coffee_files
 	
-	
+task 'test', 'Build Project (test)', ->
+	all.build()
 
