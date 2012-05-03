@@ -65,6 +65,8 @@ info = () ->
 	if arguments.length == 1 then console.info(arguments[0]) else console.info((i for i in arguments).join(',\t'))
 	
 # When executing a target, build depency list like so from all dependent nodes stemming from target
+
+###
 edges = [
     ['test.js', 's1.js'],
     ['test.js', 's2.js'],
@@ -74,7 +76,7 @@ edges = [
 
 
 console.log(tsort(edges))
-
+###
 
 class ProjectManager
 	
@@ -441,8 +443,16 @@ Target::write = (filenames) ->
 	else
 		filenames = [@name]
 	
+	if @buffer.length < 1
+		error 'Cannot write files -- nothing to write!'
+	
 	unless @buffer.length == filenames.length
 		error 'Cannot write files -- buffer length and filenames are different sizes'
+	
+	if @buffer.length == 1 and typeof @buffer.contents == 'string'
+		contents = [@buffer.contents]
+	else
+		contents = @buffer.contents
 	
 	for i in [0...@buffer.length]
 	
@@ -451,8 +461,8 @@ Target::write = (filenames) ->
 		# Make sure directory exists
 		mkdirP path.dirname loc
 	
-		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
-	
+		fs.writeFileSync loc, contents[i], 'utf8'
+			
 		DEBUG "Writing #{loc}"
 	
 # Writes buffer contents to staging directory (using target name as the filename)
@@ -466,9 +476,17 @@ Target::writeTmp = (filenames) ->
 	else
 		filenames = [@name]
 	
+	if @buffer.length < 1
+		error 'Cannot write files -- nothing to write!'
+		
 	unless @buffer.length == filenames.length
 		error 'Cannot write files -- buffer length and filenames are different sizes'
-	
+		
+	if @buffer.length == 1 and typeof @buffer.contents == 'string'
+		contents = [@buffer.contents]
+	else
+		contents = @buffer.contents
+		
 	for i in [0...@buffer.length]
 	
 		loc = path.join @project.staging_dir, filenames[i]
@@ -476,8 +494,8 @@ Target::writeTmp = (filenames) ->
 		# Make sure directory exists
 		mkdirP path.dirname loc
 	
-		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
-	
+		fs.writeFileSync loc, contents[i], 'utf8'
+			
 		DEBUG "Writing #{loc}"
 	
 

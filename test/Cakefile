@@ -1,10 +1,10 @@
 
-test = require 'batman'
-
 # Local
 #builder   = require '../src/cs/builder'
 # Global
-builder   = require 'builder'
+#builder   = require 'builder'
+# Local
+builder   = require '../src/cs/builder'
 
 target = builder.target
 project = builder.project
@@ -12,7 +12,7 @@ project = builder.project
 test = project('builder', 
 	build_dir: './=build'
 	staging_dir: './=staging'
-	source_dir: './test_src'
+	source_dir: './src'
 )
 
 all = target 'All', ['js/app.js.min']
@@ -36,13 +36,17 @@ target 'js/app.js.min', ['app.coffee'], ->
 	@coffee2js()
 	@write('js/app.js') # For debugging! :)
 	@minify()
+	@prepend('*/')
 	@prependFile('LICENSE')
+	@prepend('/*')
 	@write()
 	
 
 target 'app.coffee', coffee_files, ->
+	builder.debug coffee_files
 	@read()
 	@cat()
+	builder.debug @buffer.contents
 	@writeTmp()
 	
 
