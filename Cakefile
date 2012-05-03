@@ -37,7 +37,7 @@ target 'coffeescripts', coffee_files, ->
 
 target 'install', ['build'], ->
 	builder.shell.cd builderProject.build_dir
-	builder.shell.exec 'npm -g install'
+	builder.shell.exec 'sudo npm -g install'
 
 
 target 'package.json', ['package.json.tmpl'], ->

@@ -246,7 +246,7 @@ class Buffer
 		return removed
 
 	getTempFile: (file) ->
-		file = path.join @node.project.staging_dir, '._tmp_' + @node.name.replace(dirsep,'_') + '.' + uuid4()
+		file = path.join @node.project.staging_dir, '~_tmp_' + @node.name.replace(dirsep,'_') + '.' + uuid4()
 		# Make sure path exists
 		mkdirP path.dirname(file)
 		Buffer.registerTempFile(file)

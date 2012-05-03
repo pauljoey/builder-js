@@ -12,30 +12,21 @@ option('-t', '--target [TARGET]', 'Target to build (default: "build").');
 
 task 'build', 'Build Project', (options) ->
 	options.target = 'build' unless options.target? 
-	try
-		target = builder.lastProject().getTarget(options.target)
-		unless target?
-			builder.error "No target named '#{options.target}'"	
-		else
-			target.build()
-	catch err
-		unless err.nice_error? and err.nice_error
-			throw err
+	builder.run(options.target, builder.lastProject())
 #####################################################################
 
 
 
 
-test = project('builder', 
+test_project = project('builder', 
 	build_dir: './=build'
 	staging_dir: './=staging'
 	source_dir: './src'
 )
 
-all = target 'All', ['js/app.js.min']
+coffee_files = builder.ls(test_project.source_dir + '/coffee/*.coffee')
 
-coffee_files = builder.ls(test.source_dir + '/coffee/*.coffee')
-
+target 'build', ['js/app.js.min']
 
 target 'js/app.js.min', ['app.coffee'], ->
 	@read()
