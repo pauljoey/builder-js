@@ -43,6 +43,10 @@ target 'install', ['build'], ->
 target 'package.json', ['package.json.tmpl'], ->
 	@read()
 	@write()
-	
+
+
+target 'clean', [], ->
+	builder.shell.rm('-rf', builderProject.build_dir + '/*')
+	builder.shell.rm('-rf', builderProject.staging_dir + '/*')
 
 
