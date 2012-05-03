@@ -56,6 +56,11 @@ DEBUG = () ->
 
 error = () ->
 	if arguments.length == 1 then console.error(arguments[0]) else console.error((i for i in arguments).join(',\t'))
+	arguments.nice_error = true
+	throw arguments
+	
+systemerror = () ->
+	if arguments.length == 1 then console.error(arguments[0]) else console.error((i for i in arguments).join(',\t'))
 	throw arguments
 	
 warn = () ->
@@ -80,8 +85,10 @@ console.log(tsort(edges))
 
 class ProjectManager
 	
-	# Hack
-	@latest = null
+	# Hacks
+	@first = null
+	@last = null
+	
 	@PROJECTS = {}
 
 	@getProject: (name) ->
@@ -96,7 +103,10 @@ class ProjectManager
 			#DEBUG 'Nodes time!'
 			#nodes()
 		
-		ProjectManager.latest = project
+		unless ProjectManager.last?
+			ProjectManager.first = project
+			
+		ProjectManager.last = project
 		return project
 
 
@@ -130,9 +140,11 @@ class NodeManager
 		
 		return node
 
-
 	getNode: (name) ->
 		return @__unresolved_nodes[name]
+
+	getTarget: (name) ->
+		return @getNode(name)
 		
 	createNode: (name) ->
 		unless node = @__unresolved_nodes[name]
@@ -245,9 +257,10 @@ class Buffer
 		Buffer.TEMP_FILES.push(file)
 		
 	@deleteTempFiles: () ->
-		DEBUG 'Deleting temp files... '
-		for f in Buffer.TEMP_FILES
-			fs.unlinkSync(f)
+		if Buffer.TEMP_FILES.length
+			DEBUG 'Deleting temp files... '
+			for f in Buffer.TEMP_FILES
+				fs.unlinkSync(f)
 
 	
 
@@ -264,6 +277,7 @@ class Node extends NodeManager
 	is_source = null
 	is_building = false
 	is_up_to_date = false
+	build_requested = false
 	project = null
 	last_updated = 0
 	
@@ -289,14 +303,17 @@ class Node extends NodeManager
 			source.build()
 			
 	checkSourceBuilds: () ->
-		for source in @sources
-			unless source.is_up_to_date and not source.is_building
-				return
-		@buildSelf()
+		if @build_requested
+			for source in @sources
+				unless source.is_up_to_date and not source.is_building
+					return
+			@buildSelf()
+			
 		return
 	
 	build: () ->
 		#DEBUG 'Node:build()', 'called args=', JSON.stringify(i for i in arguments)
+		@build_requested = true
 		if 0 < @sources.length 
 			info 'Building dependencies ' + @name
 			@buildSources()
@@ -309,7 +326,7 @@ class Node extends NodeManager
 		else
 			info 'Building ' + @name
 			if @build_function
-				DEBUG 'Node:build()', 'calling build_function'
+				DEBUG 'buildSelf()', 'calling build_function'
 				# Fork here and wait until build_function is done
 				@is_building = true
 				#if @sources
@@ -319,7 +336,7 @@ class Node extends NodeManager
 				# Serial execution
 				@done()
 			else
-				DEBUG 'Node:build()', 'no build_function'
+				DEBUG 'buildSelf()', 'no build_function'
 				@is_building = false
 				#if @sources
 				#	@buffer = new Buffer(@sources, @project.staging_dir)
@@ -378,8 +395,11 @@ class Node extends NodeManager
 			
 			
 	checkFile: () ->
-		p = @findSourcePath(@file)
-		fs.statSync(p)
+		try
+			p = @findSourcePath(@file)
+			fs.statSync(p)
+		catch err
+			error "No target/file named '#{@name}'"
 	
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
@@ -429,7 +449,7 @@ Target::cat = () ->
 		@buffer.contents = @buffer.contents.join('\n')
 		@buffer.length = 1
 	
-	DEBUG "Concatenated files"
+	info "Concatenated files"
 
 
 # Writes buffer contents to output directory (using target name as the filename)
@@ -463,7 +483,7 @@ Target::write = (filenames) ->
 	
 		fs.writeFileSync loc, contents[i], 'utf8'
 			
-		DEBUG "Writing #{loc}"
+		info "Writing #{loc}"
 	
 # Writes buffer contents to staging directory (using target name as the filename)
 Target::writeTmp = (filenames) ->
@@ -496,7 +516,7 @@ Target::writeTmp = (filenames) ->
 	
 		fs.writeFileSync loc, contents[i], 'utf8'
 			
-		DEBUG "Writing #{loc}"
+		info "Writing #{loc}"
 	
 
 Target::coffee2js = () ->
@@ -582,6 +602,7 @@ Target::prepend = (prepend_string) ->
 	for i in [0...@buffer.length]
 		@buffer.contents[i] = prepend_string + '\n' + @buffer.contents[i]
 	
+
 
 changeDirectory = (filenames, destination) ->
 
@@ -670,10 +691,25 @@ mkdirP = (p, mode) ->
 	# Create directories recursively from there.
 	pos = missing_pos
 	while pos <= dirs
-		DEBUG 'mkdirP() Creating ' + parts[0...pos].join(dirsep)
+		info 'mkdirP() Creating ' + parts[0...pos].join(dirsep)
 		fs.mkdirSync parts[0...pos].join(dirsep)
 		pos += 1
 
+exports.run = (target, project) ->
+	target = 'build' unless target? 
+	project = ProjectManager.last unless project?
+	
+	try
+		t = project.getTarget(target)
+		unless t?
+			builder.error "No target named '#{target}'"	
+		else
+			t.build()
+			Buffer.deleteTempFiles()
+	catch err
+		unless err.nice_error? and err.nice_error
+			Buffer.deleteTempFiles()
+			throw err
 
 ###
 target = (name, sources, build_function) ->
@@ -692,17 +728,26 @@ project = (options) ->
 ###
 
 target = (name, sources, build_function) ->
-	project = ProjectManager.latest
+	project = ProjectManager.last
 	unless project
 		error 'No project declared'
 	else 
 		return project.createTarget(name, sources, build_function)
 
+project = ProjectManager.createProject
+
+
 exports.debug = DEBUG
+exports.info = info
+exports.warn = warn
+exports.error = error
+
 exports.changeExtension = changeExtension
 exports.changeDirectory = changeDirectory
+exports.shell = shell
 
-project = ProjectManager.createProject
+exports.lastProject = -> return ProjectManager.last
+exports.firstProject = -> return ProjectManager.first
 
 exports.target = target
 exports.project = project

@@ -1,26 +1,43 @@
 
+
+#####################################################################
+# Required Builder setup
+#####################################################################
+
 # Bootstrap Builder file :)
-builder   = require './src/cs/builder'
+builder   = require './src/lib/builder'
+target    = builder.target
+project   = builder.project
 
-target  = builder.target
-project = builder.project
+option('-t', '--target [TARGET]', 'Target to build (default: "build").');
 
-test = project('builder', 
+task 'build', 'Build Project', (options) ->
+	options.target = 'build' unless options.target? 
+	builder.run(options.target, builder.lastProject())
+#####################################################################
+
+
+
+builderProject = project('builder', 
 	build_dir: './=build'
 	staging_dir: './=staging'
 	source_dir: './src'
 )
 
 #coffee_files = builder.ls(test.source_dir + '/coffee/*.coffee')
-coffee_files = ['cs/tsort.coffee', 'cs/builder.coffee']
-coffee_files_out = builder.changeDirectory(coffee_files, './')
+coffee_files = ['lib/tsort.coffee', 'lib/builder.coffee']
+coffee_files_out = coffee_files
 
-all = target 'All', ['coffeescripts','package.json']
+target 'build', ['coffeescripts','package.json']
 
 
 target 'coffeescripts', coffee_files, ->
 	@read()
 	@write(coffee_files_out)
+
+target 'install', ['build'], ->
+	builder.shell.cd builderProject.build_dir
+	builder.shell.exec 'npm -g install'
 
 
 target 'package.json', ['package.json.tmpl'], ->
@@ -28,8 +45,4 @@ target 'package.json', ['package.json.tmpl'], ->
 	@write()
 	
 
-task 'build', 'Build Project', ->
-	all.build()
-	builder.debug coffee_files
-	
 

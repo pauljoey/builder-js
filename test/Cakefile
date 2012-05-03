@@ -1,13 +1,30 @@
 
-# Local
-#builder   = require '../src/cs/builder'
-# Global
-#builder   = require 'builder'
-# Local
-builder   = require '../src/cs/builder'
+#####################################################################
+# Required Builder setup
+#####################################################################
 
-target = builder.target
-project = builder.project
+#builder   = require '../src/lib/builder' # Local
+builder   = require 'builder'             # Global
+target    = builder.target
+project   = builder.project
+
+option('-t', '--target [TARGET]', 'Target to build (default: "build").');
+
+task 'build', 'Build Project', (options) ->
+	options.target = 'build' unless options.target? 
+	try
+		target = builder.lastProject().getTarget(options.target)
+		unless target?
+			builder.error "No target named '#{options.target}'"	
+		else
+			target.build()
+	catch err
+		unless err.nice_error? and err.nice_error
+			throw err
+#####################################################################
+
+
+
 
 test = project('builder', 
 	build_dir: './=build'
@@ -18,18 +35,7 @@ test = project('builder',
 all = target 'All', ['js/app.js.min']
 
 coffee_files = builder.ls(test.source_dir + '/coffee/*.coffee')
-###
-target 'js/app.js.min', ['app.js'], ->
-	@read()
-	console.log('We are the DEEEEEEEEEEEE')
-	@minify()
-	@write()
-	
-target 'app.js', ['app.coffee'], ->
-	@read()
-	@coffee2js()
-	@write()
-###	
+
 
 target 'js/app.js.min', ['app.coffee'], ->
 	@read()
@@ -43,17 +49,9 @@ target 'js/app.js.min', ['app.coffee'], ->
 	
 
 target 'app.coffee', coffee_files, ->
-	builder.debug coffee_files
 	@read()
 	@cat()
-	builder.debug @buffer.contents
 	@writeTmp()
 	
 
-task 'build', 'Build Project', ->
-	all.build()
-	builder.debug coffee_files
-	
-task 'test', 'Build Project (test)', ->
-	all.build()
 
