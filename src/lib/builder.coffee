@@ -326,7 +326,7 @@ class Node extends NodeManager
 		else
 			info 'Building ' + @name
 			if @build_function
-				DEBUG 'buildSelf()', 'calling build_function'
+				#DEBUG 'buildSelf()', 'calling build_function'
 				# Fork here and wait until build_function is done
 				@is_building = true
 				#if @sources
@@ -336,7 +336,7 @@ class Node extends NodeManager
 				# Serial execution
 				@done()
 			else
-				DEBUG 'buildSelf()', 'no build_function'
+				#DEBUG 'buildSelf()', 'no build_function'
 				@is_building = false
 				#if @sources
 				#	@buffer = new Buffer(@sources, @project.staging_dir)
@@ -381,17 +381,14 @@ class Node extends NodeManager
 			target.checkSourceBuilds()
 	
 	findSourcePath: (rel_path) ->
-		p = path.normalize path.join @project.build_dir, rel_path
-		if path.existsSync p
-			return p
-		p = path.normalize path.join @project.staging_dir, rel_path
-		if path.existsSync p
-			return p
-		p = path.normalize path.join @project.source_dir, rel_path
-		if path.existsSync p
-			return p
-		else
-			return rel_path
+		dirs = [@project.source_dir, @project.staging_dir, @project.build_dir, '.']
+		for d in dirs
+			p = path.normalize path.join d, rel_path
+			if path.existsSync p
+				return p
+		
+		warn 'Could not locate source ' + rel_path		
+		return rel_path
 			
 			
 	checkFile: () ->
@@ -702,7 +699,7 @@ exports.run = (target, project) ->
 	try
 		t = project.getTarget(target)
 		unless t?
-			builder.error "No target named '#{target}'"	
+			error "No target named '#{target}'"	
 		else
 			t.build()
 			Buffer.deleteTempFiles()

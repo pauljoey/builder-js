@@ -42,5 +42,8 @@ target 'app.coffee', coffee_files, ->
 	@cat()
 	@writeTmp()
 	
+target 'clean', [], ->
+	builder.shell.rm('-rf', builderProject.build_dir + '/*')
+	builder.shell.rm('-rf', builderProject.staging_dir + '/*')
 
 
