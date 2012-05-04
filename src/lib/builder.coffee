@@ -69,6 +69,18 @@ warn = () ->
 info = () ->
 	if arguments.length == 1 then console.info(arguments[0]) else console.info((i for i in arguments).join(',\t'))
 	
+current_level = 0
+
+levelUp = () ->
+	current_level += 1
+	
+levelDown = () ->
+	current_level -= 1
+	current_level = 0 if current_level < 0
+	
+levelReset = () ->
+	current_level = 0
+	
 # When executing a target, build depency list like so from all dependent nodes stemming from target
 
 ###
@@ -194,19 +206,21 @@ class Buffer
 
 
 	toString: () ->
+		###
 		if @type == Buffer.TYPE_SOURCE 
+			DEBUG 'Source->String conversion ', @contents
 			contents = new Array(@length)
-			
 			for source, index in @contents then do (source, index) =>
 				f = @node.findSourcePath(source.file)
-				DEBUG 'Reading ' + f
 				contents[index] = fs.readFileSync "#{f}", 'utf8'
 			@type = Buffer.TYPE_STRING
 			@contents = contents
 			return @contents
-		else if @type == Buffer.TYPE_FILEPATH 
+		###
+		if @type == Buffer.TYPE_FILEPATH 
 			contents = new Array(@length)
 			for data, index in @contents then do (data, index) =>
+				DEBUG 'Reading ' + data
 				contents[index] = fs.readFileSync "#{data}", 'utf8'
 			@type = Buffer.TYPE_STRING
 			@contents = contents
@@ -215,14 +229,17 @@ class Buffer
 			return @contents
 
 	toFile: () ->
+		###
 		if @type == Buffer.TYPE_SOURCE 
+			DEBUG 'Source->File conversion ' 
 			contents = new Array(@length)
 			for source, index in @contents then do (source, index) =>
 				contents[index] = @node.findSourcePath(source.file)
 			@type = Buffer.TYPE_FILEPATH
 			@contents = contents
 			return @contents
-		else if @type == Buffer.TYPE_STRING
+		###
+		if @type == Buffer.TYPE_STRING
 			contents = new Array(@length)
 			for i in [0...@length]
 				filename = @getTempFile()
@@ -248,7 +265,7 @@ class Buffer
 	getTempFile: (file) ->
 		file = path.join @node.project.staging_dir, '~_tmp_' + @node.name.replace(dirsep,'_') + '.' + uuid4()
 		# Make sure path exists
-		mkdirP path.dirname(file)
+		mkdir path.dirname(file)
 		Buffer.registerTempFile(file)
 		return file
 
@@ -282,6 +299,7 @@ class Node extends NodeManager
 	last_modified = 0
 	project = null
 	last_updated = 0
+	depth = 0
 	
 	constructor: (project, name) ->
 		#DEBUG 'Node:New()', 'called args=', JSON.stringify(i for i in arguments)
@@ -293,7 +311,7 @@ class Node extends NodeManager
 		@buffer = new Buffer(@)
 		
 		# Default build_function action:
-		@build_function = @checkFile
+		@build_function = @buildFile
 
 	addSource: (source) ->
 		@sources.push(source) if @sources.indexOf(source) < 0 
@@ -381,8 +399,8 @@ class Node extends NodeManager
 		
 		# Copy self into buffer if we have no sources or rule - ie, a leaf node
 		# ... I think this makes sense to do ...
-		if @sources.length < 1
-			@buffer = @
+		#if @sources.length < 1
+		#	@buffer = @
 		DEBUG 'Done ' + @name
 		# Tell parents that we're done building
 		for target in @targets
@@ -390,6 +408,7 @@ class Node extends NodeManager
 	
 	findSourcePath: (rel_path) ->
 		dirs = [@project.source_dir, @project.staging_dir, @project.build_dir, '.']
+
 		for d in dirs
 			p = path.normalize path.join d, rel_path
 			if path.existsSync p
@@ -397,17 +416,61 @@ class Node extends NodeManager
 		
 		warn 'Could not locate source ' + rel_path		
 		return rel_path
+
+	
+	getFile: () ->
+		# assume we're built and up to date..
+
+		if @buffer.type == Buffer.TYPE_FILEPATH 
+			return @buffer.contents.slice(0)
 			
+		else if @buffer.type == Buffer.TYPE_STRING
+			contents = new Array(@buffer.length)
+			for i in [0...@buffer.length]
+				filename = @buffer.getTempFile()
+				fs.writeFileSync filename, @buffer.contents[i], 'utf8'
+				contents[i] = filename
+			return contents
+		else
+			warn 'Unknown buffer type'
+			return null
+
+	getString: () ->
+	
+		if @buffer.type == Buffer.TYPE_FILEPATH 
+			contents = new Array(@buffer.length)
+			for data, index in @buffer.contents then do (data, index) =>
+				DEBUG 'Reading ' + data
+				contents[index] = fs.readFileSync "#{data}", 'utf8'
+			return contents
+		else if @buffer.type == Buffer.TYPE_STRING
+			return @buffer.contents.slice(0)
+		else
+			warn 'Unknown buffer type'
+			return null
 			
-	checkFile: () ->
+				
+	buildFile: () ->
+
+		# resolve path
+			
+		p = @findSourcePath(@name)
+		DEBUG 'buildfile() ' + p
+		@is_file_source = true
+		
 		try
-			p = @findSourcePath(@file)
-			@is_file_source = true
 			stats = fs.statSync(p)
-			@last_modified = (new Date(stats.mtime)).getTime()
 		catch err
 			error "No target/file named '#{@name}'"
 			
+		@last_modified = (new Date(stats.mtime)).getTime()
+		
+		@file = p
+		@buffer.type = Buffer.TYPE_FILEPATH 
+		@buffer.contents = [p]
+		@buffer.length = 1
+			
+
 			
 	
 # Want to be able to 'map' targets.
@@ -433,12 +496,37 @@ Target::options = (options) ->
 	for key, val of options
 		@options[key] = val
 		
+Target::files = () ->
+
+	# NOTE: need to clone array so that we can modify it without modifying the sources.
+	#@buffer.contents = @sources.slice(0)
+	#@buffer.length = @sources.length
+	#@buffer.type = Buffer.TYPE_SOURCE
+	
+	@buffer.contents = []
+	for i in [0...@sources.length]
+		files = @sources[i].getFile()
+		for f in files
+			@buffer.contents.push(f)
+	@buffer.length = @buffer.contents.length
+	@buffer.type = Buffer.TYPE_FILEPATH
+
 Target::read = () ->
 
 	# NOTE: need to clone array so that we can modify it without modifying the sources.
-	@buffer.contents = @sources.slice(0)
-	@buffer.length = @sources.length
-	@buffer.type = Buffer.TYPE_SOURCE
+	#@buffer.contents = @sources.slice(0)
+	#@buffer.length = @sources.length
+	#@buffer.type = Buffer.TYPE_SOURCE
+	
+	@buffer.contents = []
+	for i in [0...@sources.length]
+		files = @sources[i].getString()
+		for f in files
+			@buffer.contents.push(f)
+	@buffer.length = @buffer.contents.length
+	@buffer.type = Buffer.TYPE_STRING
+
+
 
 Target::pop = () ->
 
@@ -455,7 +543,7 @@ Target::cat = () ->
 	@buffer.toString()
 	
 	if 1 < @buffer.length
-		@buffer.contents = @buffer.contents.join('\n')
+		@buffer.contents = [@buffer.contents.join('\n')]
 		@buffer.length = 1
 	
 	info "Concatenated files"
@@ -478,19 +566,19 @@ Target::write = (filenames) ->
 	unless @buffer.length == filenames.length
 		error 'Cannot write files -- buffer length and filenames are different sizes'
 	
-	if @buffer.length == 1 and typeof @buffer.contents == 'string'
-		contents = [@buffer.contents]
-	else
-		contents = @buffer.contents
+	#if @buffer.length == 1 and typeof @buffer.contents == 'string'
+	#	contents = [@buffer.contents]
+	#else
+	#	contents = @buffer.contents
 	
 	for i in [0...@buffer.length]
 	
 		loc = path.join @project.build_dir, filenames[i]
 	
 		# Make sure directory exists
-		mkdirP path.dirname loc
+		mkdir path.dirname loc
 	
-		fs.writeFileSync loc, contents[i], 'utf8'
+		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
 			
 		info "Writing #{loc}"
 	
@@ -511,19 +599,19 @@ Target::writeTmp = (filenames) ->
 	unless @buffer.length == filenames.length
 		error 'Cannot write files -- buffer length and filenames are different sizes'
 		
-	if @buffer.length == 1 and typeof @buffer.contents == 'string'
-		contents = [@buffer.contents]
-	else
-		contents = @buffer.contents
+	#if @buffer.length == 1 and typeof @buffer.contents == 'string'
+	#	contents = [@buffer.contents]
+	#else
+	#	contents = @buffer.contents
 		
 	for i in [0...@buffer.length]
 	
 		loc = path.join @project.staging_dir, filenames[i]
 	
 		# Make sure directory exists
-		mkdirP path.dirname loc
+		mkdir path.dirname loc
 	
-		fs.writeFileSync loc, contents[i], 'utf8'
+		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
 			
 		info "Writing #{loc}"
 	
@@ -679,7 +767,7 @@ timestamp = (time) ->
 	else
 		ret = ret + min
 
-mkdirP = (p, mode) ->
+mkdir = (p, mode) ->
 	p = path.normalize(p)
 	# Quick check and return
 	if path.existsSync(p)
@@ -700,7 +788,7 @@ mkdirP = (p, mode) ->
 	# Create directories recursively from there.
 	pos = missing_pos
 	while pos <= dirs
-		info 'mkdirP() Creating ' + parts[0...pos].join(dirsep)
+		info 'mkdir() Creating ' + parts[0...pos].join(dirsep)
 		fs.mkdirSync parts[0...pos].join(dirsep)
 		pos += 1
 

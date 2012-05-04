@@ -3,8 +3,8 @@
 # Required Builder setup
 #####################################################################
 
-#builder   = require '../src/lib/builder' # Local
-builder   = require 'builder'             # Global
+builder   = require '../src/lib/builder' # Local
+#builder   = require 'builder'             # Global
 target    = builder.target
 project   = builder.project
 
