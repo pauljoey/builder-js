@@ -277,7 +277,9 @@ class Node extends NodeManager
 	is_source = null
 	is_building = false
 	is_up_to_date = false
+	is_file_source = false
 	build_requested = false
+	last_modified = 0
 	project = null
 	last_updated = 0
 	
@@ -314,6 +316,10 @@ class Node extends NodeManager
 	build: () ->
 		#DEBUG 'Node:build()', 'called args=', JSON.stringify(i for i in arguments)
 		@build_requested = true
+		
+		# If the target has sources, build them.
+		# They will trigger the building of the target as 
+		# they complete by calling checkSourceBuilds()
 		if 0 < @sources.length 
 			info 'Building dependencies ' + @name
 			@buildSources()
@@ -370,12 +376,14 @@ class Node extends NodeManager
 	done: () ->
 		@is_up_to_date = true
 		@is_building = false
+		unless @is_file_source
+			@last_modified = (new Date()).getTime()
 		
 		# Copy self into buffer if we have no sources or rule - ie, a leaf node
 		# ... I think this makes sense to do ...
 		if @sources.length < 1
 			@buffer = @
-		
+		DEBUG 'Done ' + @name
 		# Tell parents that we're done building
 		for target in @targets
 			target.checkSourceBuilds()
@@ -394,9 +402,13 @@ class Node extends NodeManager
 	checkFile: () ->
 		try
 			p = @findSourcePath(@file)
-			fs.statSync(p)
+			@is_file_source = true
+			stats = fs.statSync(p)
+			@last_modified = (new Date(stats.mtime)).getTime()
 		catch err
 			error "No target/file named '#{@name}'"
+			
+			
 	
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
@@ -423,8 +435,8 @@ Target::options = (options) ->
 		
 Target::read = () ->
 
-	# May make this an explicit build command?
-	@buffer.contents = @sources
+	# NOTE: need to clone array so that we can modify it without modifying the sources.
+	@buffer.contents = @sources.slice(0)
 	@buffer.length = @sources.length
 	@buffer.type = Buffer.TYPE_SOURCE
 
@@ -655,7 +667,7 @@ timestamp = (time) ->
 	if day < 10
 		ret = ret + '0' + day
 	else
-		ret = ret +  day
+		ret = ret + day
 	
 	if hour < 10
 		ret = hour + '0' + hour
@@ -701,12 +713,15 @@ exports.run = (target, project) ->
 		unless t?
 			error "No target named '#{target}'"	
 		else
+			DEBUG 'Running...'
 			t.build()
 			Buffer.deleteTempFiles()
 	catch err
 		unless err.nice_error? and err.nice_error
 			Buffer.deleteTempFiles()
 			throw err
+
+
 
 ###
 target = (name, sources, build_function) ->
