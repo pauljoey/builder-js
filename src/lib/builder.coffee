@@ -10,10 +10,11 @@ shell = require('shelljs')
 exports.ls = shell.ls
 
 coffee = require 'coffee-script'
-fs	 = require 'fs'
-path = require 'path'
-exec = require('child_process').exec
+fs	   = require 'fs'
+path   = require 'path'
+exec   = require('child_process').exec
 util   = require 'util'
+crypto = require 'crypto'
 #mini = 'yui-compressor -o'
 
 
@@ -25,10 +26,10 @@ tsort   = require('./tsort').tsort
 dirsep = '/'
 
 uuid4 = (a, b) ->
-  b = a = ""
-  while a++ < 36
-    b += (if a * 51 & 52 then (if a ^ 15 then 8 ^ Math.random() * (if a ^ 20 then 16 else 4) else 4).toString(16) else "-")
-  b
+	b = a = ""
+	while a++ < 36
+		b += (if a * 51 & 52 then (if a ^ 15 then 8 ^ Math.random() * (if a ^ 20 then 16 else 4) else 4).toString(16) else "-")
+	b
 
 # Target: 
 #	Name: 'All'
@@ -158,6 +159,9 @@ class NodeManager
 	getTarget: (name) ->
 		return @getNode(name)
 		
+	getSource: (name) ->
+		return @getNode(name)
+		
 	createNode: (name) ->
 		unless node = @__unresolved_nodes[name]
 			node = @__unresolved_nodes[name] = new Node(@, name)		
@@ -169,6 +173,8 @@ class Project extends NodeManager
 	staging_dir = '=staging/'
 	build_dir = '=build/'
 	source_dir = './'
+	base_dir = './'
+	
 	@instance = null
 
 	constructor: (name, options) ->
@@ -180,6 +186,7 @@ class Project extends NodeManager
 		@build_dir = options.build_dir if options.build_dir? 
 		@staging_dir = options.staging_dir if options.staging_dir? 
 		@source_dir = options.source_dir if options.source_dir? 
+		@base_dir = options.base_dir if options.base_dir?
 
 
 class Buffer
@@ -251,6 +258,37 @@ class Buffer
 		else if @type == Buffer.TYPE_FILEPATH
 			return @contents
 
+
+	getFile: () ->
+		# assume we're built and up to date..
+
+		if @type == Buffer.TYPE_FILEPATH 
+			return @contents.slice(0)
+			
+		else if @type == Buffer.TYPE_STRING
+			contents = new Array(@length)
+			for i in [0...@length]
+				filename = @getTempFile()
+				fs.writeFileSync filename, @contents[i], 'utf8'
+				contents[i] = filename
+			return contents
+		else
+			warn 'Unknown buffer type'
+			return null
+
+	getString: () ->
+	
+		if @type == Buffer.TYPE_FILEPATH 
+			contents = new Array(@length)
+			for data, index in @contents then do (data, index) =>
+				DEBUG 'Reading ' + data
+				contents[index] = fs.readFileSync "#{data}", 'utf8'
+			return contents
+		else if @type == Buffer.TYPE_STRING
+			return @contents.slice(0)
+		else
+			warn 'Unknown buffer type'
+			return null
 		
 	pop: () ->
 		removed = @contents.pop()
@@ -407,7 +445,7 @@ class Node extends NodeManager
 			target.checkSourceBuilds()
 	
 	findSourcePath: (rel_path) ->
-		dirs = [@project.source_dir, @project.staging_dir, @project.build_dir, '.']
+		dirs = [@project.source_dir, @project.staging_dir, @project.build_dir, @project.base_dir, '.']
 
 		for d in dirs
 			p = path.normalize path.join d, rel_path
@@ -420,34 +458,13 @@ class Node extends NodeManager
 	
 	getFile: () ->
 		# assume we're built and up to date..
+		return @buffer.getFile()
 
-		if @buffer.type == Buffer.TYPE_FILEPATH 
-			return @buffer.contents.slice(0)
-			
-		else if @buffer.type == Buffer.TYPE_STRING
-			contents = new Array(@buffer.length)
-			for i in [0...@buffer.length]
-				filename = @buffer.getTempFile()
-				fs.writeFileSync filename, @buffer.contents[i], 'utf8'
-				contents[i] = filename
-			return contents
-		else
-			warn 'Unknown buffer type'
-			return null
 
 	getString: () ->
-	
-		if @buffer.type == Buffer.TYPE_FILEPATH 
-			contents = new Array(@buffer.length)
-			for data, index in @buffer.contents then do (data, index) =>
-				DEBUG 'Reading ' + data
-				contents[index] = fs.readFileSync "#{data}", 'utf8'
-			return contents
-		else if @buffer.type == Buffer.TYPE_STRING
-			return @buffer.contents.slice(0)
-		else
-			warn 'Unknown buffer type'
-			return null
+		# assume we're built and up to date..
+		return @buffer.getString()
+
 			
 				
 	buildFile: () ->
@@ -491,36 +508,75 @@ class Node extends NodeManager
 
 Target = Node
 
+
+Target::getTarget = (name) ->
+	s = @project.getTarget(name)
+	unless s?
+		warn 'Target not found: ' + name
+	return s
+
 			
 Target::options = (options) ->
 	for key, val of options
 		@options[key] = val
 		
-Target::files = () ->
+Target::files = (targets) ->
 
 	# NOTE: need to clone array so that we can modify it without modifying the sources.
 	#@buffer.contents = @sources.slice(0)
 	#@buffer.length = @sources.length
 	#@buffer.type = Buffer.TYPE_SOURCE
 	
+	if sources? and sources
+		if typeof sources == 'string'
+			s = @project.getTarget(sources)
+			unless s?
+				error 'Source not found: ' + sources
+			sources = [s]
+		else
+			for i in [0...sources.length]
+				if typeof sources[i] == 'string'
+					s = @project.getTarget(sources[i])
+					unless s?
+						error 'Source not found: ' + sources[i]
+					sources[i] = s
+	else
+		sources = @sources
+	
 	@buffer.contents = []
-	for i in [0...@sources.length]
-		files = @sources[i].getFile()
-		for f in files
+	for i in [0...sources.length]
+		source_files = sources[i].getFile()
+		for f in source_files
 			@buffer.contents.push(f)
 	@buffer.length = @buffer.contents.length
 	@buffer.type = Buffer.TYPE_FILEPATH
 
-Target::read = () ->
+Target::read = (sources) ->
 
 	# NOTE: need to clone array so that we can modify it without modifying the sources.
 	#@buffer.contents = @sources.slice(0)
 	#@buffer.length = @sources.length
 	#@buffer.type = Buffer.TYPE_SOURCE
 	
+	if sources? and sources
+		if typeof sources == 'string'
+			s = @project.getTarget(sources)
+			unless s?
+				error 'Source not found: ' + sources
+			sources = [s]
+		else
+			for i in [0...sources.length]
+				if typeof sources[i] == 'string'
+					s = @project.getTarget(sources[i])
+					unless s?
+						error 'Source not found: ' + sources[i]
+					sources[i] = s
+	else
+		sources = @sources
+	
 	@buffer.contents = []
-	for i in [0...@sources.length]
-		files = @sources[i].getString()
+	for i in [0...sources.length]
+		files = sources[i].getString()
 		for f in files
 			@buffer.contents.push(f)
 	@buffer.length = @buffer.contents.length
@@ -640,18 +696,41 @@ Target::coffee2js = () ->
 		compiled = coffee.compile(c)
 		@buffer.contents[i] = compiled
 
+
+
+Target::replace = (match, replace) ->
+
+	@buffer.toString()
+	
+	for i in [0...@buffer.length]
+		c = @buffer.contents[i]
+		c = c.replace(match, replace)
+		@buffer.contents[i] = c
 		
-Target::minify = () ->
+Target::minify = (filenames) ->
 	@buffer.toFile()
 	
-	input = @buffer.contents[0]
-	output = path.join @project.build_dir, @name
+	if filenames? and filenames
+		if typeof filenames == 'string'
+			filenames = [filenames]
+		
+		for i in [0...filenames.length]
+			filenames[i] = path.join @project.build_dir, filenames[i]
+	else
+		filenames = new Array(@buffer.length)
+		for i in [0...@buffer.length]
+			filenames[i] = @buffer.getTempFile()
+		
+	unless @buffer.length == filenames.length
+		error 'Cannot write files -- buffer length and filenames are different sizes'
+	
+	for i in [0...@buffer.length]
+		out_file = filenames[i]
+		result = shell.exec cmd_minify(@buffer.contents[i], out_file)
+		info "Minified #{@buffer.contents[i]}"
+		@buffer.contents[i] = out_file
+		
 
-	result = shell.exec cmd_minify(input, output)
-	
-	info "Minified #{output}"
-	
-	@buffer.contents[0] = output
 
 Target::appendFile = (file) ->
 
@@ -698,8 +777,23 @@ Target::prepend = (prepend_string) ->
 	
 	for i in [0...@buffer.length]
 		@buffer.contents[i] = prepend_string + '\n' + @buffer.contents[i]
+
+
+Target::sha256 = () ->
+			
+	@buffer.toString()
+	
+	checksums = new Array(@buffer.length)
+	
+	for i in [0...@buffer.length]
+		checksums[i] = sha256(@buffer.contents[i])
+		
+	return checksums
 	
 
+sha256 = (data) ->
+	return crypto.createHash('sha256').update(data).digest("hex")
+exports.sha256 = sha256
 
 changeDirectory = (filenames, destination) ->
 
@@ -738,6 +832,8 @@ changeExtension = (filenames, oldext, newext) ->
 		return output[0]
 	else
 		return output
+		
+
 		
 timestamp = (time) ->
 
@@ -791,8 +887,10 @@ mkdir = (p, mode) ->
 		info 'mkdir() Creating ' + parts[0...pos].join(dirsep)
 		fs.mkdirSync parts[0...pos].join(dirsep)
 		pos += 1
+		
+exports.mkdir = mkdir
 
-exports.run = (target, project) ->
+run = (target, project) ->
 	target = 'build' unless target? 
 	project = ProjectManager.last unless project?
 	
@@ -809,7 +907,22 @@ exports.run = (target, project) ->
 			Buffer.deleteTempFiles()
 			throw err
 
+exports.run = run
 
+importProject = (project_path) ->
+	project_path = fs.realpathSync project_path
+	coffee.run fs.readFileSync(path.join(project_path, 'Cakefile')).toString(), filename: 'Cakefile'
+	# KLUDGE
+	prj = ProjectManager.last
+	
+	# Remap source directories	
+	prj.base_dir = path.resolve(project_path, prj.base_dir)
+	prj.source_dir = path.resolve(project_path, prj.source_dir)
+	prj.build_dir = path.resolve(project_path, prj.build_dir)
+	prj.staging_dir = path.resolve(project_path, prj.staging_dir)
+
+
+exports.importProject = importProject
 
 ###
 target = (name, sources, build_function) ->
@@ -848,6 +961,7 @@ exports.shell = shell
 
 exports.lastProject = -> return ProjectManager.last
 exports.firstProject = -> return ProjectManager.first
+exports.getProject = (name) -> return ProjectManager.getProject(name)
 
 exports.target = target
 exports.project = project
