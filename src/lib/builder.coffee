@@ -147,7 +147,10 @@ class NodeManager
 		node.is_target = true
 		
 		for source_name in sources
-			source = @createNode(source_name)
+			if typeof source_name == 'string'
+				source = @createNode(source_name)
+			else
+				source = source_name
 			source.is_source = true
 			node.addSource(source)
 		
@@ -331,8 +334,9 @@ class Node extends NodeManager
 	is_target = null
 	is_source = null
 	is_building = false
-	is_up_to_date = false
+	first_build_completed = false
 	is_file_source = false
+	is_watched = false
 	build_requested = false
 	last_modified = 0
 	project = null
@@ -347,6 +351,9 @@ class Node extends NodeManager
 		@sources = []
 		@targets = []
 		@buffer = new Buffer(@)
+		@last_modified = 0
+		@last_updated = 0
+		@depth = 0
 		
 		# Default build_function action:
 		@build_function = @buildFile
@@ -355,35 +362,56 @@ class Node extends NodeManager
 		@sources.push(source) if @sources.indexOf(source) < 0 
 		source.targets.push(@) if source.targets.indexOf(@) < 0 
 
-	buildSources: () ->
+	buildSources: (options) ->
 		@is_building = true
 		for source in @sources
-			source.build()
+			source.build(options)
 			
-	checkSourceBuilds: () ->
+	checkSourceBuilds: (options) ->
 		if @build_requested
+			DEBUG 'checkSourceBuilds() ' + @name 
 			for source in @sources
-				unless source.is_up_to_date and not source.is_building
+				if source.is_building or ! source.first_build_completed
 					return
-			@buildSelf()
+			@buildSelf(options)
 			
 		return
 	
-	build: () ->
+	
+	watch: () ->
+		@build({watch: true})
+	
+	build: (options) ->
 		#DEBUG 'Node:build()', 'called args=', JSON.stringify(i for i in arguments)
 		@build_requested = true
-		
+
 		# If the target has sources, build them.
 		# They will trigger the building of the target as 
 		# they complete by calling checkSourceBuilds()
 		if 0 < @sources.length 
 			info 'Building dependencies ' + @name
-			@buildSources()
+			@buildSources(options)
 		else
-			@buildSelf()
+			@buildSelf(options)
 	
-	buildSelf: () ->
-		if @is_up_to_date
+	buildSelf: (options) ->
+
+
+		if @first_build_completed 
+			DEBUG 'buildSelf() ' + @name + ' ' + new Date(@last_modified)
+			stale = false
+			for source in @sources
+				if @last_modified < source.last_modified
+					DEBUG 'newer ' + source.name + ' ' + new Date(source.last_modified)
+					stale = true
+					break
+				else
+					DEBUG 'older ' + source.name + ' ' + new Date(source.last_modified)
+		else
+			stale = true
+
+
+		unless stale
 			info 'Up to date ' + @name
 		else
 			info 'Building ' + @name
@@ -393,27 +421,27 @@ class Node extends NodeManager
 				@is_building = true
 				#if @sources
 				#	@buffer = new Buffer(@sources, @project.staging_dir)
-				@start()
-				@build_function()
+				@start(options)
+				@build_function(options)
 				# Serial execution
-				@done()
+				@done(options)
 			else
-				#DEBUG 'buildSelf()', 'no build_function'
+				#DEBUG 'buildSelf()', 'no build_function'   
 				@is_building = false
 				#if @sources
 				#	@buffer = new Buffer(@sources, @project.staging_dir)
-				@start()
-				@done()
+				@start(options)
+				@done(options)
 				
 	###				
 	getFile: () ->
-		unless @is_up_to_date
+		unless @first_build_completed
 			@build()
 		return @findSourcePath(@file)
 
 		
 	getContents: () ->
-		unless @is_up_to_date
+		unless @first_build_completed
 			@build()
 		p = @findSourcePath(@file)
 		contents = fs.readFileSync p, 'utf8'
@@ -421,7 +449,7 @@ class Node extends NodeManager
 	###
 	
 	# Copy sources into buffer	
-	start: () ->
+	start: (options) ->
 		@buffer.clear()
 		
 		# May make this an explicit build command?
@@ -429,8 +457,8 @@ class Node extends NodeManager
 		# @buffer.length = @sources.length
 		# @buffer.type = Buffer.TYPE_SOURCE
 		
-	done: () ->
-		@is_up_to_date = true
+	done: (options) ->
+		@first_build_completed = true
 		@is_building = false
 		unless @is_file_source
 			@last_modified = (new Date()).getTime()
@@ -442,7 +470,7 @@ class Node extends NodeManager
 		DEBUG 'Done ' + @name
 		# Tell parents that we're done building
 		for target in @targets
-			target.checkSourceBuilds()
+			target.checkSourceBuilds(options)
 	
 	findSourcePath: (rel_path) ->
 		dirs = [@project.source_dir, @project.staging_dir, @project.build_dir, @project.base_dir, '.']
@@ -467,12 +495,12 @@ class Node extends NodeManager
 
 			
 				
-	buildFile: () ->
+	buildFile: (options) ->
 
 		# resolve path
 			
 		p = @findSourcePath(@name)
-		DEBUG 'buildfile() ' + p
+		DEBUG 'Found file/target ' + p
 		@is_file_source = true
 		
 		try
@@ -486,9 +514,22 @@ class Node extends NodeManager
 		@buffer.type = Buffer.TYPE_FILEPATH 
 		@buffer.contents = [p]
 		@buffer.length = 1
-			
+		
+		if options? and options.watch? and options.watch and ! @is_watched
+			info 'watching ' + p
+			fs.watchFile(p, (curr, prev) => @fileChanged(options, curr, prev)) 
+				
+	fileChanged: (options, curr, prev) ->
 
+		@last_modified = (new Date(curr.mtime)).getTime()
+		info '--> ' + @name + ' changed. ' + new Date(@last_modified)
 			
+		@first_build_completed = true
+		@is_building = false
+
+		# Tell parents that we're done building
+		for target in @targets
+			target.checkSourceBuilds(options)		
 	
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
@@ -890,9 +931,10 @@ mkdir = (p, mode) ->
 		
 exports.mkdir = mkdir
 
-run = (target, project) ->
-	target = 'build' unless target? 
-	project = ProjectManager.last unless project?
+run = (target, project, options) ->
+	target ?= 'build' 
+	project ?= ProjectManager.last
+	options ?= {}
 	
 	try
 		t = project.getTarget(target)
@@ -900,7 +942,7 @@ run = (target, project) ->
 			error "No target named '#{target}'"	
 		else
 			DEBUG 'Running...'
-			t.build()
+			t.build(options)
 			Buffer.deleteTempFiles()
 	catch err
 		unless err.nice_error? and err.nice_error
@@ -908,6 +950,13 @@ run = (target, project) ->
 			throw err
 
 exports.run = run
+
+watch = (target, project, options) ->
+	options ?= {watch: true}
+	options.watch ?= true
+	return run(target, project, options)
+
+exports.watch = watch
 
 importProject = (project_path) ->
 	project_path = fs.realpathSync project_path
@@ -920,6 +969,8 @@ importProject = (project_path) ->
 	prj.source_dir = path.resolve(project_path, prj.source_dir)
 	prj.build_dir = path.resolve(project_path, prj.build_dir)
 	prj.staging_dir = path.resolve(project_path, prj.staging_dir)
+	
+	return prj
 
 
 exports.importProject = importProject

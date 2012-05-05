@@ -11,9 +11,13 @@ project   = builder.project
 
 option('-t', '--target [TARGET]', 'Target to build (default: "build").');
 
-task 'build', 'Build Project', (options) ->
+task 'build', 'Build project', (options) ->
 	options.target = 'build' unless options.target? 
 	builder.run(options.target, builder.lastProject())
+	
+task 'watch', 'Build project and watch for changes', (options) ->
+	options.target = 'build' unless options.target? 
+	builder.watch(options.target, builder.lastProject())
 #####################################################################
 
 
