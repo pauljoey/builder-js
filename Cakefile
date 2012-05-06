@@ -58,7 +58,7 @@ target 'package.json', ['package.json.tmpl'], ->
 
 
 target 'clean', [], ->
-	builder.shell.rm('-rf', builderProject.build_dir + '/*')
-	builder.shell.rm('-rf', builderProject.staging_dir + '/*')
+	builder.shell.rm('-rf', @project.build_dir + '/*')
+	builder.shell.rm('-rf', @project.staging_dir + '/*')
 
 

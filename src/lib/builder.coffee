@@ -318,7 +318,13 @@ class Buffer
 		if Buffer.TEMP_FILES.length
 			DEBUG 'Deleting temp files... '
 			for f in Buffer.TEMP_FILES
-				fs.unlinkSync(f)
+				try
+					fs.unlinkSync(f)
+				catch err
+					warn 'Error deleting temp file: ' + err
+				
+				
+		Buffer.TEMP_FILES = []
 
 	
 
@@ -526,11 +532,21 @@ class Node extends NodeManager
 			
 		@first_build_completed = true
 		@is_building = false
+		
+		# Catch errors to ensure compilation continues
+		try
+			# Tell parents that we're done building
+			for target in @targets
+				target.checkSourceBuilds(options)	
+		catch err
+			try
+				error err
+			catch err
+				donothing = true
+		
+		# This may break things...		
+		Buffer.deleteTempFiles()
 
-		# Tell parents that we're done building
-		for target in @targets
-			target.checkSourceBuilds(options)		
-	
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
 #
@@ -734,7 +750,11 @@ Target::coffee2js = () ->
 
 	for i in [0...@buffer.length]
 		c = @buffer.contents[i]
-		compiled = coffee.compile(c)
+		try
+			compiled = coffee.compile(c)
+		catch err
+			throw 'Error compiling target to coffeescript: ' + err
+		
 		@buffer.contents[i] = compiled
 
 
