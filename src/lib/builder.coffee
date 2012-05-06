@@ -16,7 +16,11 @@ exec   = require('child_process').exec
 util   = require 'util'
 crypto = require 'crypto'
 #mini = 'yui-compressor -o'
-
+try 
+	growl = require('growl')
+catch err
+	growl = (msg) ->
+		console.log(msg)
 
 
 #command = require('common-node').subprocess.command
@@ -58,6 +62,7 @@ DEBUG = () ->
 error = () ->
 	if arguments.length == 1 then console.error(arguments[0]) else console.error((i for i in arguments).join(',\t'))
 	arguments.nice_error = true
+	growl arguments[0]
 	throw arguments
 	
 systemerror = () ->
@@ -69,6 +74,10 @@ warn = () ->
 	
 info = () ->
 	if arguments.length == 1 then console.info(arguments[0]) else console.info((i for i in arguments).join(',\t'))
+	
+notify = (message) ->
+	growl message
+	
 	
 current_level = 0
 
@@ -147,8 +156,10 @@ class NodeManager
 		node.is_target = true
 		
 		for source_name in sources
+			# If string, resolve node
 			if typeof source_name == 'string'
 				source = @createNode(source_name)
+			# Otherwise assume it is a node object
 			else
 				source = source_name
 			source.is_source = true
@@ -585,13 +596,17 @@ Target::files = (targets) ->
 	#@buffer.type = Buffer.TYPE_SOURCE
 	
 	if sources? and sources
+		# If sources is a string, assume it is a named target. Resolve it.
 		if typeof sources == 'string'
 			s = @project.getTarget(sources)
 			unless s?
 				error 'Source not found: ' + sources
 			sources = [s]
+		# Otherwise assume it's an array
 		else
 			for i in [0...sources.length]
+				# See if any items in the sources array are named targets (strings)
+				# and resolve them if they are.
 				if typeof sources[i] == 'string'
 					s = @project.getTarget(sources[i])
 					unless s?
@@ -616,13 +631,17 @@ Target::read = (sources) ->
 	#@buffer.type = Buffer.TYPE_SOURCE
 	
 	if sources? and sources
+		# If sources is a string, assume it is a named target. Resolve it.
 		if typeof sources == 'string'
 			s = @project.getTarget(sources)
 			unless s?
 				error 'Source not found: ' + sources
 			sources = [s]
+		# Otherwise assume it's an array
 		else
 			for i in [0...sources.length]
+				# See if any items in the sources array are named targets (strings)
+				# and resolve them if they are.
 				if typeof sources[i] == 'string'
 					s = @project.getTarget(sources[i])
 					unless s?
@@ -753,7 +772,7 @@ Target::coffee2js = () ->
 		try
 			compiled = coffee.compile(c)
 		catch err
-			throw 'Error compiling target to coffeescript: ' + err
+			throw "Error compiling target #{@name} to coffeescript: #{err}"
 		
 		@buffer.contents[i] = compiled
 
@@ -1025,6 +1044,7 @@ exports.debug = DEBUG
 exports.info = info
 exports.warn = warn
 exports.error = error
+exports.notify = notify
 
 exports.changeExtension = changeExtension
 exports.changeDirectory = changeDirectory
