@@ -369,7 +369,7 @@ class Node extends NodeManager
 			
 	checkSourceBuilds: (options) ->
 		if @build_requested
-			DEBUG 'checkSourceBuilds() ' + @name 
+			#DEBUG 'checkSourceBuilds() ' + @name 
 			for source in @sources
 				if source.is_building or ! source.first_build_completed
 					return
@@ -398,15 +398,15 @@ class Node extends NodeManager
 
 
 		if @first_build_completed 
-			DEBUG 'buildSelf() ' + @name + ' ' + new Date(@last_modified)
+			#DEBUG 'buildSelf() ' + @name + ' ' + new Date(@last_modified)
 			stale = false
 			for source in @sources
 				if @last_modified < source.last_modified
-					DEBUG 'newer ' + source.name + ' ' + new Date(source.last_modified)
+					#DEBUG 'newer ' + source.name + ' ' + new Date(source.last_modified)
 					stale = true
 					break
 				else
-					DEBUG 'older ' + source.name + ' ' + new Date(source.last_modified)
+					#DEBUG 'older ' + source.name + ' ' + new Date(source.last_modified)
 		else
 			stale = true
 
@@ -552,7 +552,7 @@ Target = Node
 
 Target::getTarget = (name) ->
 	s = @project.getTarget(name)
-	unless s?
+	unless s?  
 		warn 'Target not found: ' + name
 	return s
 

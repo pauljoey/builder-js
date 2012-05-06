@@ -39,9 +39,18 @@ target 'coffeescripts', coffee_files, ->
 	@write(coffee_files_out)
 
 target 'install', ['build'], ->
+	curr = builder.shell.pwd()
 	builder.shell.cd builderProject.build_dir
-	builder.shell.exec 'sudo npm -g install'
+	try
+		builder.shell.exec 'sudo npm -g install'
+	catch err
+		builder.shell.cd curr
+		throw err
+	builder.shell.cd curr
 
+
+target 'test', ['build'], ->
+	builder.debug('Test test bleep blorp')
 
 target 'package.json', ['package.json.tmpl'], ->
 	@read()
