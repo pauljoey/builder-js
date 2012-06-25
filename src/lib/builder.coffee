@@ -1,4 +1,7 @@
 
+cmd_less = (sources, output) ->
+	"lessc #{sources} > #{output}"
+
 cmd_coffee = (sources, output) ->
 	"coffee --output #{output} --compile #{sources}"
 	
@@ -10,6 +13,7 @@ shell = require('shelljs')
 exports.ls = shell.ls
 
 coffee = require 'coffee-script'
+less   = require 'less'
 fs	   = require 'fs'
 path   = require 'path'
 exec   = require('child_process').exec
@@ -378,12 +382,26 @@ class Node extends NodeManager
 	addSource: (source) ->
 		@sources.push(source) if @sources.indexOf(source) < 0 
 		source.targets.push(@) if source.targets.indexOf(@) < 0 
-
+		
+	removeSource: (source) ->
+		ind = @sources.indexOf(source)
+		if ind? and -1 < ind
+			@sources.splice(ind, 1)
+		else
+			warn "Could not find source #{source.name} in target #{@name}"
+			
+		ind = source.targets.indexOf(@)
+		if ind? and -1 < ind
+			source.targets.splice(ind, 1)
+		else
+			warn "Could not find target #{@name} in source #{source.name}"
+			
 	buildSources: (options) ->
 		@is_building = true
 		for source in @sources
 			source.build(options)
-			
+
+
 	checkSourceBuilds: (options) ->
 		if @build_requested
 			#DEBUG 'checkSourceBuilds() ' + @name 
@@ -510,7 +528,6 @@ class Node extends NodeManager
 		# assume we're built and up to date..
 		return @buffer.getString()
 
-			
 				
 	buildFile: (options) ->
 
@@ -524,6 +541,9 @@ class Node extends NodeManager
 			stats = fs.statSync(p)
 		catch err
 			error "No target/file named '#{@name}'"
+
+		if stats.isDirectory()
+			error "Implicit target '#{@name}' located at '#{p}' is a directory. Only files are allowed."
 			
 		@last_modified = (new Date(stats.mtime)).getTime()
 		
@@ -535,7 +555,7 @@ class Node extends NodeManager
 		if options? and options.watch? and options.watch and ! @is_watched
 			info 'watching ' + p
 			fs.watchFile(p, (curr, prev) => @fileChanged(options, curr, prev)) 
-				
+
 	fileChanged: (options, curr, prev) ->
 
 		@last_modified = (new Date(curr.mtime)).getTime()
@@ -557,6 +577,10 @@ class Node extends NodeManager
 		
 		# This may break things...		
 		Buffer.deleteTempFiles()
+
+
+class DirectoryTarget extends Node
+
 
 # Want to be able to 'map' targets.
 # ie, 'jquery' -> '/src/vendor/jquery/jquery.js'
@@ -713,6 +737,33 @@ Target::write = (filenames) ->
 		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
 			
 		info "Writing #{loc}"
+
+
+
+Target::copyTo = (loc) ->
+
+	loc ?= @name
+	loc = path.join @project.build_dir, loc
+
+	@buffer.toFile()
+	
+	shell.mkdir('-p', loc)
+	shell.cp('-fR', @buffer.contents, loc)
+	
+	info "Copying #{@name} to #{loc}"
+
+Target::copyToTmp = (loc) ->
+
+	loc ?= @name
+	loc = path.join @project.staging_dir, loc
+
+	in_files = @buffer.toFile()
+	
+	shell.mkdir('-p', loc)
+	shell.cp('-fR', @buffer.contents, loc)
+	
+	info "Copying #{@name} to #{loc}"
+
 	
 # Writes buffer contents to staging directory (using target name as the filename)
 Target::writeTmp = (filenames) ->
@@ -777,6 +828,29 @@ Target::coffee2js = () ->
 		@buffer.contents[i] = compiled
 
 
+
+Target::less2css = (filenames) ->
+	@buffer.toFile()
+	
+	if filenames? and filenames
+		if typeof filenames == 'string'
+			filenames = [filenames]
+		
+		for i in [0...filenames.length]
+			filenames[i] = path.join @project.build_dir, filenames[i]
+	else
+		filenames = new Array(@buffer.length)
+		for i in [0...@buffer.length]
+			filenames[i] = @buffer.getTempFile()
+		
+	unless @buffer.length == filenames.length
+		error 'Cannot write files -- buffer length and filenames are different sizes'
+	
+	for i in [0...@buffer.length]
+		out_file = filenames[i]
+		result = shell.exec cmd_less(@buffer.contents[i], out_file)
+		info "Compiled LESS file #{@buffer.contents[i]}"
+		@buffer.contents[i] = out_file
 
 Target::replace = (match, replace) ->
 
