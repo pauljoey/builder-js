@@ -5,8 +5,11 @@ cmd_less = (sources, output) ->
 cmd_coffee = (sources, output) ->
 	"coffee --output #{output} --compile #{sources}"
 	
-cmd_minify = (sources, output) ->
+cmd_minify_js = (sources, output) ->
 	"yui-compressor --type js -o #{output}  #{sources}"
+
+cmd_minify_css = (sources, output) ->
+	"yui-compressor --type css -o #{output}  #{sources}"
 
 
 shell = require('shelljs')
@@ -25,6 +28,11 @@ try
 catch err
 	growl = (msg) ->
 		console.log(msg)
+		
+try
+	less = require 'less'
+catch err
+	less = undefined
 
 
 #command = require('common-node').subprocess.command
@@ -163,7 +171,7 @@ class NodeManager
 			# If string, resolve node
 			if typeof source_name == 'string'
 				source = @createNode(source_name)
-			# Otherwise assume it is a node object
+			# Otherwise assume it is a node object (eg, imported from another project)
 			else
 				source = source_name
 			source.is_source = true
@@ -448,6 +456,7 @@ class Node extends NodeManager
 
 		unless stale
 			info 'Up to date ' + @name
+			@done(options)
 		else
 			info 'Building ' + @name
 			if @build_function
@@ -612,7 +621,7 @@ Target::options = (options) ->
 	for key, val of options
 		@options[key] = val
 		
-Target::files = (targets) ->
+Target::files = (sources) ->
 
 	# NOTE: need to clone array so that we can modify it without modifying the sources.
 	#@buffer.contents = @sources.slice(0)
@@ -659,7 +668,10 @@ Target::read = (sources) ->
 		if typeof sources == 'string'
 			s = @project.getTarget(sources)
 			unless s?
-				error 'Source not found: ' + sources
+				# Could be a new file. If so, add it as a source and build it
+				s = @project.createNode(sources)
+				s.build()
+				#error 'Source not found: ' + sources
 			sources = [s]
 		# Otherwise assume it's an array
 		else
@@ -669,7 +681,10 @@ Target::read = (sources) ->
 				if typeof sources[i] == 'string'
 					s = @project.getTarget(sources[i])
 					unless s?
-						error 'Source not found: ' + sources[i]
+						#error 'Source not found: ' + sources[i]
+						# Could be a new file. If so, add it as a source and build it
+						s = @project.createNode(sources[i])
+						s.build()
 					sources[i] = s
 	else
 		sources = @sources
@@ -703,6 +718,15 @@ Target::cat = () ->
 		@buffer.length = 1
 	
 	info "Concatenated files"
+	
+	
+Target::find = (pattern) ->
+	
+	@buffer.toString()
+	
+	contents = @buffer.contents.join('\n')
+	
+	return contents.match(pattern)
 
 
 # Writes buffer contents to output directory (using target name as the filename)
@@ -829,7 +853,19 @@ Target::coffee2js = () ->
 
 
 
-Target::less2css = (filenames) ->
+Target::less2css = () ->
+	@buffer.toString()
+
+	for i in [0...@buffer.length]
+		c = @buffer.contents[i]
+		try
+			compiled = coffee.compile(c)
+		catch err
+			throw "less2css(): Error compiling target #{@name} to css : #{err}"
+		
+		@buffer.contents[i] = compiled
+		
+	###
 	@buffer.toFile()
 	
 	if filenames? and filenames
@@ -851,6 +887,7 @@ Target::less2css = (filenames) ->
 		result = shell.exec cmd_less(@buffer.contents[i], out_file)
 		info "Compiled LESS file #{@buffer.contents[i]}"
 		@buffer.contents[i] = out_file
+	###
 
 Target::replace = (match, replace) ->
 
@@ -861,7 +898,7 @@ Target::replace = (match, replace) ->
 		c = c.replace(match, replace)
 		@buffer.contents[i] = c
 		
-Target::minify = (filenames) ->
+Target::minifyJS = (filenames) ->
 	@buffer.toFile()
 	
 	if filenames? and filenames
@@ -880,11 +917,33 @@ Target::minify = (filenames) ->
 	
 	for i in [0...@buffer.length]
 		out_file = filenames[i]
-		result = shell.exec cmd_minify(@buffer.contents[i], out_file)
+		result = shell.exec cmd_minify_js(@buffer.contents[i], out_file)
 		info "Minified #{@buffer.contents[i]}"
 		@buffer.contents[i] = out_file
 		
-
+Target::minifyCSS = (filenames) ->
+	@buffer.toFile()
+	
+	if filenames? and filenames
+		if typeof filenames == 'string'
+			filenames = [filenames]
+		
+		for i in [0...filenames.length]
+			filenames[i] = path.join @project.build_dir, filenames[i]
+	else
+		filenames = new Array(@buffer.length)
+		for i in [0...@buffer.length]
+			filenames[i] = @buffer.getTempFile()
+		
+	unless @buffer.length == filenames.length
+		error 'Cannot write files -- buffer length and filenames are different sizes'
+	
+	for i in [0...@buffer.length]
+		out_file = filenames[i]
+		result = shell.exec cmd_minify_css(@buffer.contents[i], out_file)
+		info "Minified #{@buffer.contents[i]}"
+		@buffer.contents[i] = out_file
+		
 
 Target::appendFile = (file) ->
 
@@ -1127,6 +1186,8 @@ exports.shell = shell
 exports.lastProject = -> return ProjectManager.last
 exports.firstProject = -> return ProjectManager.first
 exports.getProject = (name) -> return ProjectManager.getProject(name)
+
+exports.Buffer = Buffer
 
 exports.target = target
 exports.project = project
