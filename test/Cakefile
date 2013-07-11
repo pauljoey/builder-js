@@ -30,7 +30,7 @@ target 'js/app.js.min', ['app.coffee'], ->
 	@read()
 	@coffee2js()
 	@write('js/app.js') # For debugging! :)
-	@minify()
+	@minifyJS()
 	@prepend('*/')
 	@prependFile('LICENSE')
 	@prepend('/*')
@@ -40,7 +40,7 @@ target 'js/app.js.min', ['app.coffee'], ->
 target 'app.coffee', coffee_files, ->
 	@read()
 	@cat()
-	@writeTmp()
+	#@writeTmp()
 	
 target 'clean', [], ->
 	builder.shell.rm('-rf', builderProject.build_dir + '/*')
