@@ -9,4 +9,4 @@ execAsync = (cmd) ->
 		DEBUG 'exec waiting'
 		result = flow.wait()
 		DEBUG 'exec returning'
-		return result
+		return result 

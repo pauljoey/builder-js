@@ -97,7 +97,7 @@ class ProjectManager
 		
 	@createProject: (name, options, nodes) ->
 		if project = ProjectManager.getProject(project)
-			# Set options, add nodes
+			# Set options, add nodes but don't re-create the project instance
 		else
 			project = ProjectManager.PROJECTS[name] = new Project(name, options)
 			#p2 = project
@@ -110,6 +110,8 @@ class ProjectManager
 		ProjectManager.last = project
 		return project
 
+	@activeProject: () ->
+		return ProjectManager.last # KLUDGE
 
 class NodeManager
 
@@ -611,7 +613,7 @@ project = (options) ->
 ###
 
 target = (name, sources, build_function) ->
-	project = ProjectManager.last
+	project = ProjectManager.activeProject()
 	unless project
 		abort 'No project declared'
 	else 
@@ -620,8 +622,10 @@ target = (name, sources, build_function) ->
 project = ProjectManager.createProject
 
 
-exports.lastProject = -> return ProjectManager.last
+exports.activeProject = ProjectManager.activeProject
 exports.firstProject = -> return ProjectManager.first
+exports.lastProject = -> return ProjectManager.last
+
 exports.getProject = (name) -> return ProjectManager.getProject(name)
 
 exports.target = target

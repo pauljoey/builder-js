@@ -8,8 +8,7 @@ less   = require 'less'
 fs     = require 'fs'
 path   = require 'path'
 exec   = require('child_process').exec
-crypto = require 'crypto'
-#mini = 'yui-compressor -o'
+#crypto = require 'crypto'
 
 
 

@@ -1,0 +1,36 @@
+#!/usr/bin/env builder
+
+
+test_project = project('builder', 
+	build_dir: './=build'
+	staging_dir: './=staging'
+	source_dir: './src'
+)
+
+coffee_files = builder.shell.ls(test_project.source_dir + '/coffee/*.coffee')
+
+# This is the default target
+target 'build', ['js/app.js.min']
+
+target 'js/app.js.min', ['app.coffee'], ->
+	@read()
+	@coffee2js()
+	@write('js/app.js') # For debugging! :)
+	@minifyJS()
+	@prepend('*/')
+	@prependFile('LICENSE')
+	@prepend('/*')
+	@write()
+	
+
+target 'app.coffee', coffee_files, ->
+	@read()
+	@cat()
+	@writeTmp() # Useful for debugging
+
+target 'clean', [], ->
+	# These calls are dangerous!
+	builder.shell.rm('-rf', test_project.build_dir + '/*')
+	builder.shell.rm('-rf', test_project.staging_dir + '/*')
+
+

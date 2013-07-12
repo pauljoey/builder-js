@@ -19,8 +19,7 @@ exports.Target = targets.Target
 exports.target = base.target
 exports.project = base.project
 
-exports.lastProject = base.lastProject
-exports.firstProject = base.firstProject
+exports.activeProject = base.activeProject
 exports.getProject =  base.getProject
 
 exports.debug = util.debug

@@ -1,0 +1,48 @@
+builderProject = project('builder', 
+	build_dir: './=build'
+	staging_dir: './=staging'
+	source_dir: './src'
+)
+
+#coffee_files = builder.ls(test.source_dir + '/coffee/*.coffee')
+coffee_files = ['lib/tsort.coffee', 'lib/base.coffee', 'lib/cmd.coffee', 'lib/util.coffee', 'lib/targets.coffee', 'lib/builder.coffee', 'lib/optparse.coffee', 'bin/builder']
+coffee_files_out = coffee_files
+
+target 'build', ['directories','coffeescripts','package.json','README.md']
+
+
+target 'coffeescripts', coffee_files, ->
+	@read()
+	@write(coffee_files_out)
+
+target 'install', ['build'], ->
+	curr = builder.shell.pwd()
+	builder.shell.cd builderProject.build_dir
+	try
+		builder.shell.exec 'sudo npm -g install'
+	catch err
+		builder.shell.cd curr
+		throw err
+	builder.shell.cd curr
+
+
+target 'test', ['build'], ->
+	builder.debug('Test test bleep blorp')
+
+target 'package.json', ['package.json.tmpl'], ->
+	@read()
+	@write()
+
+target 'README.md', ['README.md'], ->
+	@read()
+	@write()
+
+target 'clean', [], ->
+	builder.shell.rm('-rf', @project.build_dir + '/*')
+	builder.shell.rm('-rf', @project.staging_dir + '/*')
+
+target 'directories', [], ->
+	builder.shell.mkdir('-p', @project.build_dir + '/lib')
+	builder.shell.mkdir('-p', @project.build_dir + '/bin')
+
+

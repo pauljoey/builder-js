@@ -1,0 +1,1 @@
+Builder is a Make-like build system for NodeJS that allows you to build your targets the way //you// want to. It features lazy evaluation of dependencies, file watching and a tonne of high-level helper functions to speed things up for you.

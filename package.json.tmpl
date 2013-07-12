@@ -1,19 +1,26 @@
 {
-	"author": "Paul Doucet <paul+web@atlanticresearch.ca> (http://www.atlanticresearch.ca)",
-	"main": "lib/builder.coffee",
+	"author": "Paul Doucet <paul+web@paulswildyears.com> (http://www.paulswildyears.com)",
 	"name": "builder",
 	"description": "Project build tool designed for web apps",
 	"version": "0.1.0",
 	"repository": {
 		"url": ""
 	},
+	"main": "lib/builder.coffee",
+	"bin": {
+		"builder": "./bin/builder"
+	},
+	"directories" : {
+		"lib" : "./lib"
+	},
 	"dependencies": {
 		"coffee-script": "*",
-		"shelljs": "*"
+		"shelljs": "*",
+		"uglify-js": "*"
 	},
 	"devDependencies": {},
 	"optionalDependencies": {
-		"growl": "*"	
+		"growl": "*"
 	},
 	"engines": {
 		"node": "*"
