@@ -22,7 +22,7 @@ test_project = project('builder',
 	source_dir: './src'
 )
 
-coffee_files = builder.ls(test_project.source_dir + '/coffee/*.coffee')
+coffee_files = builder.shell.ls(test_project.source_dir + '/coffee/*.coffee')
 
 target 'build', ['js/app.js.min']
 

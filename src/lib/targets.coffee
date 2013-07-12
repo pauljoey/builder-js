@@ -13,9 +13,9 @@ crypto = require 'crypto'
 
 
 
-b       = require('./builder')
-Buffer  = b.Buffer
-Node    = b.Node
+base    = require('./base')
+Buffer  = base.Buffer
+Node    = base.Node
 
 util    = require './util'
 
@@ -344,6 +344,7 @@ Target::minifyJS = (filenames) ->
 	# Here, `filenames` is one or more filenames to use as output files
 	# after minification... I think it would be more appropriate
 	# to call @write(filenames) after @minifyJS().
+	
 	info 'Minifying JS'
 	
 	@buffer.toFile()
@@ -369,7 +370,10 @@ Target::minifyJS = (filenames) ->
 		@buffer.contents[i] = out_file
 		
 Target::minifyCSS = (filenames) ->
-
+	# Here, `filenames` is one or more filenames to use as output files
+	# after minification... I think it would be more appropriate
+	# to call @write(filenames) after @minifyCSS().
+	
 	info 'Minifying CSS'
 	
 	@buffer.toFile()
@@ -449,7 +453,7 @@ Target::sha256 = () ->
 	checksums = new Array(@buffer.length)
 	
 	for i in [0...@buffer.length]
-		checksums[i] = sha256(@buffer.contents[i])
+		checksums[i] = util.sha256(@buffer.contents[i])
 		
 	return checksums
 	

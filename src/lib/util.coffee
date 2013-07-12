@@ -70,3 +70,76 @@ exports.mkdir = mkdir = (p, mode) ->
 		
 
 
+exports.sha256 = sha256 = (data) ->
+	return crypto.createHash('sha256').update(data).digest("hex")
+
+
+exports.timestamp = timestamp = (time) ->
+
+	year = time.getFullYear()
+	hour = time.getHours()
+	min = time.getMinutes()
+	month = time.getMonth()
+	day = time.getDate()
+
+	ret = String(year)
+	if month+1 < 10
+		ret = ret + '0' + (month+1)
+	else
+		ret = ret + (month+1)
+	if day < 10
+		ret = ret + '0' + day
+	else
+		ret = ret + day
+	
+	if hour < 10
+		ret = hour + '0' + hour
+	else
+		ret = ret + hour
+		
+	if min < 10
+		ret = min + '0' + min
+	else
+		ret = ret + min
+
+
+
+exports.changeDirectory = changeDirectory = (filenames, destination) ->
+
+	string = false
+	if typeof filenames == 'string'
+		string = true
+		filenames = [filenames]
+		
+	output = new Array(filenames.length)
+
+	for i in [0...filenames.length]
+		output[i] = path.join destination, path.basename filenames[i]
+	
+	if string
+		return output[0]
+	else
+		return output
+
+exports.changeExtension = changeExtension = (filenames, oldext, newext) ->
+	r = new RegExp('\.' + oldext + '$', 'i')
+	
+	string = false
+	if typeof filenames == 'string'
+		string = true
+		filenames = [filenames]
+		
+	output = new Array(filenames.length)
+
+	for i in [0...filenames.length]
+		if filenames[i].match(r)
+			output[i] = filenames[i].replace(r, '.' + newext)
+		else
+			output[i] = filenames[i] + '.' + newext
+	
+	if string
+		return output[0]
+	else
+		return output
+		
+
