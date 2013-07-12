@@ -1,17 +1,10 @@
 
 
 shell  = require('shelljs')
-exports.ls = shell.ls
 
-coffee = require 'coffee-script'
-less   = require 'less'
 fs     = require 'fs'
 path   = require 'path'
-exec   = require('child_process').exec
-crypto = require 'crypto'
 exists = fs.existsSync || path.existsSync
-#mini = 'yui-compressor -o'
-
 
 util    = require './util'
 
@@ -120,14 +113,17 @@ class ProjectManager
 
 class NodeManager
 
-	__unresolved_nodes = null
-
+	_nodes = null
+	_targets = null
+	
 	@STATUS_UPTODATE = 0
 	@STATUS_NEEDSUPDATE = 10
 	@STATUS_UPDATING = 20
 	
 	constructor: (options) ->
-		@__unresolved_nodes = {}
+		# All targets are nodes. Not all nodes are targets.
+		@_nodes = {}
+		@_targets = {}
 	
 	createTarget: (name, sources, build_function) ->
 		#debug 'NodeManager:createTarget()', 'called args=', JSON.stringify(i for i in arguments)
@@ -136,6 +132,8 @@ class NodeManager
 				warn 'NodeManager:createTarget()', 'Re-defining target ' + name
 		else
 			node = @createNode(name)
+			
+		@_targets[name] = node
 			
 		node.build_function = build_function
 		node.is_target = true
@@ -153,17 +151,20 @@ class NodeManager
 		return node
 
 	getNode: (name) ->
-		return @__unresolved_nodes[name]
+		return @_nodes[name]
 
 	getTarget: (name) ->
 		return @getNode(name)
+		
+	getTargets: () ->
+		return @_targets
 		
 	getSource: (name) ->
 		return @getNode(name)
 		
 	createNode: (name) ->
-		unless node = @__unresolved_nodes[name]
-			node = @__unresolved_nodes[name] = new Node(@, name)		
+		unless node = @_nodes[name]
+			node = @_nodes[name] = new Node(@, name)		
 		return node
 
 

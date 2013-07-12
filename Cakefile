@@ -28,7 +28,7 @@ builderProject = project('builder',
 )
 
 #coffee_files = builder.ls(test.source_dir + '/coffee/*.coffee')
-coffee_files = ['lib/tsort.coffee', 'lib/util.coffee', 'lib/targets.coffee', 'lib/builder.coffee']
+coffee_files = ['lib/tsort.coffee', 'lib/base.coffee', 'lib/cmd.coffee', 'lib/util.coffee', 'lib/targets.coffee', 'lib/builder.coffee']
 coffee_files_out = coffee_files
 
 target 'build', ['coffeescripts','package.json']
