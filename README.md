@@ -1,1 +1,4 @@
-Builder is a Make-like build system for NodeJS that allows you to build your targets the way //you// want to. It features lazy evaluation of dependencies, file watching and a tonne of high-level helper functions to speed things up for you.
+builder-js
+==========
+
+BuilderJS is a Make-like build system for Node. Allows you to build (and re-build) your projects YOUR way (with help if you want it). It features lazy evaluation of dependencies, file watching and a tonne of high-level helper functions to speed things up for you.

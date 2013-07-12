@@ -10,6 +10,7 @@ targets = require('./targets')
 exports.watch = cmd.watch
 exports.run = cmd.run
 exports.importProject = cmd.importProject
+exports.runBuilderFile = cmd.runBuilderFile
 
 exports.Node = base.Node
 exports.Buffer = base.Buffer

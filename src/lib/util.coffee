@@ -1,6 +1,7 @@
 
 fs     = require 'fs'
 path   = require 'path'
+crypto = require 'crypto'
 
 exists = fs.existsSync || path.existsSync
 

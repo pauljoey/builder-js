@@ -8,7 +8,7 @@ builderProject = project('builder',
 coffee_files = ['lib/tsort.coffee', 'lib/base.coffee', 'lib/cmd.coffee', 'lib/util.coffee', 'lib/targets.coffee', 'lib/builder.coffee', 'lib/optparse.coffee', 'bin/builder']
 coffee_files_out = coffee_files
 
-target 'build', ['directories','coffeescripts','package.json','README.md']
+target 'build', ['directories','coffeescripts','package.json','README']
 
 
 target 'coffeescripts', coffee_files, ->
@@ -33,8 +33,8 @@ target 'package.json', ['package.json.tmpl'], ->
 	@read()
 	@write()
 
-target 'README.md', ['README.md'], ->
-	@read()
+target 'README', ['README.md'], ->
+	@read('README.md')
 	@write()
 
 target 'clean', [], ->

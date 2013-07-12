@@ -46,7 +46,7 @@ exports.watch = watch = (target, project, options) ->
 
 exports.importProject = (project_path) ->
 	project_path = fs.realpathSync project_path
-	coffee.run fs.readFileSync(path.join(project_path, 'Cakefile')).toString(), filename: 'Cakefile'
+	coffee.run fs.readFileSync(path.join(project_path, 'Builderfile')).toString(), filename: 'Builderfile'
 	
 	# KLUDGE
 	prj = base.activeProject()

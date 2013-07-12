@@ -1,0 +1,6 @@
+=build/
+=staging/
+=deps/
+*~
+*.pyc
+
