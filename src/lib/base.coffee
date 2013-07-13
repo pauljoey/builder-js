@@ -345,10 +345,8 @@ class Buffer
 
 exports.Buffer = Buffer
 
-# A Node is the parent class for both targets and sources. It extends the 
-# NodeManager class so that it can have easy access to that class's variables
-# and methods.
-class Node extends NodeManager
+# A Node is the parent class for both targets and sources. 
+class Node 
 	name = null
 	file = null
 	sources = null
