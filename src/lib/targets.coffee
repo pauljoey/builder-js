@@ -263,7 +263,7 @@ Target::writeTmp = (filenames) ->
 
 Target::coffee2js = () ->
 
-	info 'Converting cs2js'
+	info 'Converting coffee2js'
 
 	###
 	@buffer.toFile()

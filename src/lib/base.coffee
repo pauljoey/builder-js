@@ -84,6 +84,9 @@ edges = [
 console.log(tsort(edges))
 ###
 
+# ProjectManager will be a singleton class. All projects will be defined inside
+# this singleton. Its purpose is to keep track of all defined and named 
+# projects in use.
 class ProjectManager
 	
 	# Hacks
@@ -113,6 +116,9 @@ class ProjectManager
 	@activeProject: () ->
 		return ProjectManager.last # KLUDGE
 
+# NodeManager is basically a name space. Each project has its own NodeManager.
+# Its job is to keep track of all defined "Nodes". A Node is either a target
+# or a source. 
 class NodeManager
 
 	_nodes = null
@@ -169,7 +175,8 @@ class NodeManager
 			node = @_nodes[name] = new Node(@, name)		
 		return node
 
-
+# A Project is, well, a project. It has its own namespace and files. A Project
+# keeps track of all the targets and sources that are defined within its scope.
 class Project extends NodeManager
 	name = ''
 	staging_dir = '=staging/'
@@ -190,7 +197,8 @@ class Project extends NodeManager
 		@source_dir = options.source_dir if options.source_dir? 
 		@base_dir = options.base_dir if options.base_dir?
 
-
+# A Buffer is an array of strings or files. It is typically created and then
+# transformed within a target's build function.
 class Buffer
 	contents = null
 	length = 0
@@ -337,8 +345,9 @@ class Buffer
 
 exports.Buffer = Buffer
 
-# Status
-# 
+# A Node is the parent class for both targets and sources. It extends the 
+# NodeManager class so that it can have easy access to that class's variables
+# and methods.
 class Node extends NodeManager
 	name = null
 	file = null
@@ -596,22 +605,10 @@ exports.Node = Node
 
 
 
-###
-target = (name, sources, build_function) ->
-	if Project.instance
-		project = Project.instance
-	else 
-		project = Project.instance = new Project()
-	return NodeManager.createTarget(project, name, sources, build_function)
 
-project = (options) ->
-	if Project.instance
-		Project.instance.setOptions(options)
-		return Project.instance
-	else
-		return Project.instance = new Project(options)
-###
 
+
+# Here is the "target" function for creating targets!
 target = (name, sources, build_function) ->
 	project = ProjectManager.activeProject()
 	unless project
