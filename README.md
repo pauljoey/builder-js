@@ -10,17 +10,7 @@ builder-js
  3. Able to continuously watch and build projects efficiently
 
 
-This is alpha software. It is currently being developed to be made suitable for broader use.
-
-Todo:
-
- - Lots
- - Documentation (in progress)
- - Unit testing (in progress)
- - Implement modularized plugin system for adding target functions
- - Support for variable/changing sources (directories of files, etc)
- - Browserify-like rule for auto-building node files and their dependencies, LESS scripts, etc
- - Code clean-up
+This is alpha software. It is currently being developed to be made suitable for broader use. If you actually get it working and get some use out of it, let me know!! It would make my day. Feedback welcome.
 
 Prerequisites
 -------------
@@ -149,3 +139,16 @@ Try this:
     cd test
     builder build
 ```
+
+To-do
+-----
+
+Todo:
+
+ - Lots
+ - Documentation (in progress)
+ - Unit testing (in progress)
+ - Implement modularized plugin system for adding target functions
+ - Support for variable/changing sources (directories of files, etc)
+ - Browserify-like rule for auto-building node files and their dependencies, LESS scripts, etc
+ - Code clean-up
