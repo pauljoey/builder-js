@@ -9,8 +9,7 @@ builder-js
  2. Quick/Easy to put into use for building web projects (lots of high-level helper functions)
  3. Able to continuously watch and build projects efficiently
 
-
-This is alpha software. It is currently being developed to be made suitable for broader use. If you actually get it working and get some use out of it, let me know!! It would make my day. Feedback welcome.
+This is omega (pre-alpha) software, meaning it could spell your doom. It is currently being developed to be made suitable for broader use. If you actually get it working and get some use out of it, let me know!! It would make my day. Feedback welcome.
 
 Prerequisites
 -------------
@@ -98,7 +97,7 @@ target 'clean', [], ->
 Once you've created a ```Builderfile```, you can build a defined target by running the command (anywhere inside your project directory):
 
 ```
-    builder [-w --watch] <target>
+	builder [-w --watch] <target>
 ```
 
 If you specify ```-w```, the dependent files will be watched for changes and continuously re-built. Calling ```builder``` without a target lists all defined targets.
@@ -130,15 +129,24 @@ Other:
  - ```@sha256()``` Returns sha256 checksum of buffer
 
 
+Philosophy
+----------
+
+ - Source directory != Build directory
+ - 
+ - Support common tasks with helper functions
+ 
+ 
 Testing
 -------
 
 Try this:
 
 ```
-    cd test
+    cd examples/simple
     builder build
 ```
+
 
 To-do
 -----

@@ -253,6 +253,8 @@ class Buffer
 			return @contents
 		###
 		switch @type 
+			when Buffer.TYPE_EMPTY
+				return @read()
 			when Buffer.TYPE_STRING
 				return @contents
 			when Buffer.TYPE_FILEPATH

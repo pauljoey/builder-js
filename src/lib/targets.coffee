@@ -10,6 +10,12 @@ path   = require 'path'
 exec   = require('child_process').exec
 #crypto = require 'crypto'
 
+try
+	cjsify = (require 'commonjs-everywhere').cjsify
+	escodegen = (require 'escodegen')
+catch err
+	cjsify = null
+
 
 
 base    = require('./base')
@@ -398,6 +404,33 @@ Target::minifyCSS = (filenames) ->
 		@buffer.contents[i] = out_file
 		
 
+
+Target::cjsify = (options) ->
+
+	info 'Running cjsify'
+	
+	@buffer.toFile()
+	
+	unless cjsify
+		abort 'commonjs-everywhere module not available'
+	
+	for i in [0...@buffer.length]
+		jsAst = (require 'commonjs-everywhere').cjsify @buffer.contents[i], __dirname, options
+		
+		#	export: 'MyLibrary'
+
+		{map, code} = escodegen.generate jsAst,
+			sourceMapRoot: __dirname
+			sourceMapWithCode: true
+			sourceMap: true
+		
+		#console.log map
+		#console.log code
+		
+		@buffer.contents[i] = code
+		@buffer.type = Buffer.TYPE_STRING
+		
+
 Target::appendFile = (file) ->
 
 	@buffer.toString()
@@ -424,11 +457,11 @@ Target::prependFile = (file) ->
 	contents = fs.readFileSync file, 'utf8'
 	unless contents
 		abort 'Could not read file ' + file
-		
+	
 	for i in [0...@buffer.length]
 		@buffer.contents[i] = contents + '\n' + @buffer.contents[i]
-			
-		
+	
+	
 Target::append = (append_string) ->
 		
 	@buffer.toString()

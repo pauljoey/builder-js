@@ -25,7 +25,6 @@ target 'install', ['build'], ->
 		throw err
 	builder.shell.cd curr
 
-
 target 'test', ['build'], ->
 	builder.debug('Test test bleep blorp')
 
