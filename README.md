@@ -129,13 +129,6 @@ Other:
  - ```@sha256()``` Returns sha256 checksum of buffer
 
 
-Philosophy
-----------
-
- - Source directory != Build directory
- - 
- - Support common tasks with helper functions
- 
  
 Testing
 -------

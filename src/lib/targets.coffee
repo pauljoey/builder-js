@@ -32,8 +32,6 @@ debug   = util.debug
 notify  = util.notify
 abort   = util.abort
 
-mkdir   = util.mkdir
-
 ### These are core rules ###
 
 cmd_less = (sources, output) ->
@@ -260,7 +258,7 @@ Target::writeTmp = (filenames) ->
 		loc = path.join @project.staging_dir, filenames[i]
 	
 		# Make sure directory exists
-		mkdir path.dirname loc
+		shell.mkdir('-p', path.dirname(loc)) 
 	
 		fs.writeFileSync loc, @buffer.contents[i], 'utf8'
 			

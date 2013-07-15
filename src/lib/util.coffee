@@ -43,32 +43,6 @@ exports.uuid4 = uuid4 = (a, b) ->
 		b += (if a * 51 & 52 then (if a ^ 15 then 8 ^ Math.random() * (if a ^ 20 then 16 else 4) else 4).toString(16) else "-")
 	return b
 
-exports.mkdir = mkdir = (p, mode) ->
-	p = path.normalize(p)
-	
-	# Quick check and return
-	if exists(p)
-		return true
-
-	parts = p.split(dirsep)
-	# Search backward to find first non-missing directory.
-	dirs = parts.length
-	pos = dirs
-	missing_pos = 1
-	while 0 < pos
-		if exists(parts[0...pos].join(dirsep))
-			missing_pos = pos + 1
-			break
-		else
-		pos -= 1
-
-	# Create directories recursively from there.
-	pos = missing_pos
-	while pos <= dirs
-		info 'mkdir() Creating ' + parts[0...pos].join(dirsep)
-		fs.mkdirSync parts[0...pos].join(dirsep)
-		pos += 1
-		
 
 
 exports.sha256 = sha256 = (data) ->
